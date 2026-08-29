@@ -45,9 +45,10 @@ from engine import (
     build_feature_matrix,
     extract_features,
 )
-from market import resolve_ticker_with_fallback, MarketInfo
+from market import resolve_ticker_with_fallback, get_market_info, MarketInfo
 from models import StockRecommender
 from backtest import run_benchmark_comparison, BenchmarkComparisonResult
+
 
 
 logging.basicConfig(
@@ -636,9 +637,10 @@ def compare_strategies(
     try:
         resolved = resolve_ticker_with_fallback(ticker_clean)
         disp_ticker = resolved.removesuffix(".NS").removesuffix(".BO") if resolved.endswith((".NS", ".BO")) else resolved
-        mkt = market_info_for_ticker(resolved)
+        mkt = get_market_info(resolved, {})
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
 
     cache_hit = (resolved in _cache) and (not refresh) and (not _cache[resolved].is_stale)
 
