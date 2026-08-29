@@ -165,6 +165,60 @@ def lookup_sector_fallback(ticker: str) -> Optional[str]:
 
 
 
+# Major benchmark indices
+_KNOWN_INDEX_MAPPINGS: dict[str, str] = {
+    "SENSEX": "^BSESN",
+    "BSESENSEX": "^BSESN",
+    "BSE_SENSEX": "^BSESN",
+    "BSE SENSEX": "^BSESN",
+    "^BSESN": "^BSESN",
+    ".BSESN": "^BSESN",
+    "NIFTY": "^NSEI",
+    "NIFTY50": "^NSEI",
+    "NIFTY 50": "^NSEI",
+    "NIFTY_50": "^NSEI",
+    "^NSEI": "^NSEI",
+    ".NSEI": "^NSEI",
+    "BANKNIFTY": "^NSEBANK",
+    "NIFTYBANK": "^NSEBANK",
+    "NIFTY BANK": "^NSEBANK",
+    "^NSEBANK": "^NSEBANK",
+    "NIFTYIT": "^CNXIT",
+    "NIFTY IT": "^CNXIT",
+    "^CNXIT": "^CNXIT",
+    "SPX": "^GSPC",
+    "SP500": "^GSPC",
+    "S&P 500": "^GSPC",
+    "S&P500": "^GSPC",
+    "^GSPC": "^GSPC",
+    ".INX": "^GSPC",
+    "INX": "^GSPC",
+    "^INX": "^GSPC",
+    "DJI": "^DJI",
+    "DOW": "^DJI",
+    "DOW JONES": "^DJI",
+    "^DJI": "^DJI",
+    ".DJI": "^DJI",
+    "NASDAQ": "^IXIC",
+    "^IXIC": "^IXIC",
+    ".IXIC": "^IXIC",
+    "NDX": "^NDX",
+    "^NDX": "^NDX",
+    ".NDX": "^NDX",
+    "RUT": "^RUT",
+    "^RUT": "^RUT",
+    ".RUT": "^RUT",
+    "RUSSELL 2000": "^RUT",
+    "RUSSELL2000": "^RUT",
+    "VIX": "^VIX",
+    "^VIX": "^VIX",
+    ".VIX": "^VIX",
+    "INDIA VIX": "^INDIAVIX",
+    "INDIAVIX": "^INDIAVIX",
+    "^INDIAVIX": "^INDIAVIX",
+}
+
+
 # ---------------------------------------------------------------------------
 # Ticker resolution
 # ---------------------------------------------------------------------------
@@ -174,11 +228,13 @@ def resolve_ticker(user_input: str) -> str:
 
     Resolution rules
     ----------------
-    1. If the input already has a known suffix (.NS, .BO, .L, .AX, etc.),
+    1. If the input matches a known benchmark index (e.g. SENSEX → ^BSESN,
+       NIFTY → ^NSEI), return the index symbol.
+    2. If the input already has a known suffix (.NS, .BO, .L, .AX, etc.),
        use it directly — no modification.
-    2. If the bare symbol matches a known NSE name (case-insensitive),
+    3. If the bare symbol matches a known NSE name (case-insensitive),
        try <SYMBOL>.NS first.  Fall back to .BO if .NS returns no data.
-    3. Otherwise (likely a US ticker), use the bare symbol.
+    4. Otherwise (likely a US ticker), use the bare symbol.
 
     The function does NOT make any network requests; it applies heuristics
     only.  Actual data availability is verified by fetch_raw_data().
@@ -194,6 +250,12 @@ def resolve_ticker(user_input: str) -> str:
     raw = user_input.strip()
     if not raw:
         raise ValueError("Ticker symbol cannot be empty.")
+
+    # Check direct index mappings
+    raw_upper = raw.upper()
+    if raw_upper in _KNOWN_INDEX_MAPPINGS:
+        log.info("resolve_ticker: %s → %s (known index)", raw, _KNOWN_INDEX_MAPPINGS[raw_upper])
+        return _KNOWN_INDEX_MAPPINGS[raw_upper]
 
     # Normalise: uppercase the symbol, preserve suffix case (.NS not .ns)
     # Strategy: split on the last dot
@@ -302,13 +364,13 @@ def get_market_info(ticker: str, yf_info: dict) -> MarketInfo:
     etf_category = _derive_etf_category(yf_info) if is_etf else None
 
     # ── Indian markets ────────────────────────────────────────────────────
-    if ticker_upper.endswith(".NS"):
+    if ticker_upper.endswith(".NS") or ticker_upper in {"^NSEI", "^NSEBANK", "^CNXIT", "^INDIAVIX"}:
         return MarketInfo(
             country="India", exchange="NSE",
             currency="INR", currency_symbol="₹",
             is_india=True, is_etf=is_etf, etf_category=etf_category,
         )
-    if ticker_upper.endswith(".BO"):
+    if ticker_upper.endswith(".BO") or ticker_upper in {"^BSESN"}:
         return MarketInfo(
             country="India", exchange="BSE",
             currency="INR", currency_symbol="₹",
@@ -373,6 +435,21 @@ def get_market_info(ticker: str, yf_info: dict) -> MarketInfo:
     country = CURRENCY_COUNTRY.get(currency, "United States" if currency == "USD" else "Global")
 
     company_name = yf_info.get("longName") or yf_info.get("shortName") or yf_info.get("displayName") or None
+    if not company_name:
+        if ticker_upper in {"^BSESN", "BSESN"}:
+            company_name = "BSE SENSEX Index"
+        elif ticker_upper in {"^NSEI", "NSEI"}:
+            company_name = "NIFTY 50 Index"
+        elif ticker_upper in {"^NSEBANK", "NSEBANK"}:
+            company_name = "NIFTY Bank Index"
+        elif ticker_upper in {"^CNXIT", "CNXIT"}:
+            company_name = "NIFTY IT Index"
+        elif ticker_upper in {"^GSPC", "GSPC"}:
+            company_name = "S&P 500 Index"
+        elif ticker_upper in {"^IXIC", "IXIC"}:
+            company_name = "NASDAQ Composite Index"
+        elif ticker_upper in {"^DJI", "DJI"}:
+            company_name = "Dow Jones Industrial Average"
 
     return MarketInfo(
         country=country, exchange=exchange,
