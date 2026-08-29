@@ -587,15 +587,22 @@ def compare_strategies(
     """
     Run realistic strategy benchmarking across QuantView, Buy & Hold, and SMA50/200.
     Evaluates identical time period, identical starting capital, transaction costs, and slippage.
+    QuantView strategy uses genuine Out-Of-Fold (OOF) walk-forward predictions.
     """
+    # ── Parameter validation ───────────────────────────────────────────────
+    if capital <= 0:
+        raise HTTPException(status_code=422, detail="Starting capital must be greater than zero.")
+    if not (0.0 <= cost <= 0.10):
+        raise HTTPException(status_code=422, detail="Transaction cost must be between 0.0 (0%) and 0.10 (10%).")
+    if not (0.0 <= slippage <= 0.05):
+        raise HTTPException(status_code=422, detail="Slippage must be between 0.0 (0%) and 0.05 (5%).")
+
     ticker_clean = ticker.strip()
     try:
         resolved = resolve_ticker_with_fallback(ticker_clean)
         disp_ticker = resolved.removesuffix(".NS").removesuffix(".BO") if resolved.endswith((".NS", ".BO")) else resolved
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-
-
 
     cache_hit = (resolved in _cache) and (not refresh) and (not _cache[resolved].is_stale)
 
@@ -613,12 +620,29 @@ def compare_strategies(
             raise HTTPException(status_code=500, detail=f"Model training error: {exc}")
 
     entry = _cache[resolved]
+    rec = entry.model
     df = entry.df
+
+    # QuantView must use authentic Walk-Forward Out-Of-Fold (OOF) predictions
+    if (
+        hasattr(rec, "oof_probabilities")
+        and rec.oof_probabilities is not None
+        and hasattr(rec, "oof_indices")
+        and rec.oof_indices is not None
+        and len(rec.oof_indices) > 0
+    ):
+        df_eval = df.iloc[rec.oof_indices].copy()
+        qv_probs = rec.oof_probabilities
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="QuantView walk-forward OOF predictions are unavailable for this ticker.",
+        )
 
     try:
         res = run_benchmark_comparison(
-            df=df,
-            qv_probabilities=None,
+            df=df_eval,
+            qv_probabilities=qv_probs,
             ticker=resolved,
             initial_capital=capital,
             transaction_cost=cost,
@@ -627,6 +651,7 @@ def compare_strategies(
     except Exception as exc:
         log.exception("[%s] Benchmark simulation failed", resolved)
         raise HTTPException(status_code=500, detail=f"Benchmark simulation error: {exc}")
+
 
     return BenchmarkResponse(
         success=True,

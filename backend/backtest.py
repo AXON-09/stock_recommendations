@@ -1,16 +1,24 @@
 """
 backtest.py - Realistic Backtesting and Strategy Benchmarking Engine for QuantView AI.
 
-METHODOLOGY & FAIR COMPARISON:
--------------------------------
+METHODOLOGY & EXECUTION TIMING MODEL:
+------------------------------------
 1. All strategies (QuantView, Buy & Hold, SMA50/200) execute on the exact same historical
-   dataset, calendar days, starting capital, and cost/slippage assumptions.
-2. No look-ahead bias: Signals at bar t are formed using information up to bar t only.
-3. Realistic execution:
-   - Buy orders execute at Close * (1 + SLIPPAGE).
-   - Sell orders execute at Close * (1 - SLIPPAGE).
-   - Transaction costs (default 0.10% / 10 bps) apply strictly upon position transitions.
-   - No cost is charged on holding days when position does not change.
+   dataset, calendar days, starting capital, and cost/slippage parameters.
+2. Next-Bar Execution (No Look-Ahead Bias):
+   - Signal at bar t is generated using information available through Close[t].
+   - Trade execution for Signal[t] occurs on Bar t+1 at Open[t+1] (or Close[t+1] if Open is unavailable).
+   - Buy orders execute at Open[t+1] * (1 + SLIPPAGE).
+   - Sell orders execute at Open[t+1] * (1 - SLIPPAGE).
+   - Transaction fee (default 0.10% / 10 bps) applies strictly upon position transitions.
+   - Holding days with no position change incur zero transaction costs.
+   - End-of-day portfolio equity is marked to market at Close[t+1].
+   - Final bar (N-1): Signal[N-1] generated at Close[N-1] is not executed as there is no Bar N;
+     existing positions are marked to market at Close[N-1].
+3. QuantView Strategy Authenticity:
+   - QuantView uses genuine Out-Of-Fold (OOF) predicted probabilities from walk-forward validation.
+   - If OOF predictions are unavailable, benchmark comparison raises an explicit error rather
+     than masquerading a simplistic technical indicator as QuantView.
 """
 
 from __future__ import annotations
@@ -36,10 +44,10 @@ class StrategyMetrics:
     total_return: float         # percentage, e.g. 42.5 for +42.5%
     cagr: float                 # compound annual growth rate percentage
     sharpe: float               # annualized Sharpe ratio (rf = 0)
-    max_drawdown: float         # maximum peak-to-trough drawdown percentage (e.g. -18.2)
-    volatility: float           # annualized volatility percentage
+    max_drawdown: float         # maximum peak-to-trough drawdown percentage (strictly <= 0.0)
+    volatility: float           # annualized volatility percentage (strictly >= 0.0)
     trades: int                 # number of position transitions
-    win_rate: Optional[float]   # percentage of winning round-trips; None for Buy & Hold
+    win_rate: Optional[float]   # percentage of winning round-trips; None for Buy & Hold or 0 trades
 
 
 @dataclass
@@ -72,22 +80,24 @@ class BenchmarkComparisonResult:
 def simulate_strategy(
     prices: pd.Series,
     signals: pd.Series,
+    open_prices: Optional[pd.Series] = None,
     initial_capital: float = cfg.STARTING_CAPITAL,
     transaction_cost: float = cfg.TRANSACTION_COST,
     slippage: float = cfg.SLIPPAGE,
     is_buy_and_hold: bool = False,
 ) -> Tuple[StrategyMetrics, pd.Series, List[float]]:
     """
-    Simulate a trading strategy with realistic transaction costs and execution slippage.
+    Simulate a trading strategy with realistic execution timing, costs, and slippage.
 
     Parameters
     ----------
-    prices          : Series of closing prices indexed by date.
-    signals         : Binary Series (1 = Long, 0 = Cash) indexed by date.
+    prices          : Series of closing prices indexed by date (used for signal gen & mark-to-market).
+    signals         : Binary Series (1 = Long, 0 = Cash) generated at bar t.
+    open_prices     : Series of open prices for bar t+1 execution (falls back to prices if None).
     initial_capital : Starting cash balance (default 100,000).
     transaction_cost: Proportional fee per trade value (default 0.001 / 0.10%).
     slippage        : Execution penalty on market price (default 0.0005 / 0.05%).
-    is_buy_and_hold : If True, marks strategy as Buy & Hold (win_rate = None).
+    is_buy_and_hold : If True, executes single buy on Day 0 and holds to end.
 
     Returns
     -------
@@ -95,7 +105,10 @@ def simulate_strategy(
     """
     n = len(prices)
     if n < 2:
-        raise ValueError("Insufficient price series length for backtesting.")
+        raise ValueError("Insufficient price series length for backtesting (need at least 2 bars).")
+
+    if open_prices is None:
+        open_prices = prices
 
     dates = prices.index
     cash = float(initial_capital)
@@ -107,42 +120,65 @@ def simulate_strategy(
     trade_returns: List[float] = []
     entry_price = 0.0
 
-    for i in range(n):
-        price = float(prices.iloc[i])
-        target_pos = int(signals.iloc[i]) if i < len(signals) else 0
+    if is_buy_and_hold:
+        # Buy & Hold: Enters on Day 0 at Open[0] * (1 + slippage) and holds
+        exec_p0 = float(open_prices.iloc[0]) * (1.0 + slippage)
+        if exec_p0 > 0 and cash > 0:
+            trade_val = cash / (1.0 + transaction_cost)
+            shares = trade_val / exec_p0
+            fee = trade_val * transaction_cost
+            cash = cash - (shares * exec_p0 + fee)
+            current_pos = 1
+            trades_count = 1
+            entry_price = exec_p0
 
-        # Check for position transition
-        if target_pos != current_pos:
-            if target_pos == 1 and current_pos == 0:
-                # Entering Long: Buy shares with slippage and fee
-                exec_price = price * (1.0 + slippage)
-                if exec_price > 0 and cash > 0:
-                    # Allocate available cash taking fee into account
-                    trade_val = cash / (1.0 + transaction_cost)
-                    shares = trade_val / exec_price
-                    fee = trade_val * transaction_cost
-                    cash = cash - (shares * exec_price + fee)
-                    current_pos = 1
-                    trades_count += 1
-                    entry_price = exec_price
+        equity_values[0] = cash + (shares * float(prices.iloc[0]))
+        for i in range(1, n):
+            equity_values[i] = cash + (shares * float(prices.iloc[i]))
 
-            elif target_pos == 0 and current_pos == 1:
-                # Exiting Long: Sell shares with slippage and fee
-                exec_price = price * (1.0 - slippage)
-                if shares > 0 and exec_price > 0:
-                    gross_proceeds = shares * exec_price
-                    fee = gross_proceeds * transaction_cost
-                    cash += (gross_proceeds - fee)
-                    if entry_price > 0:
-                        trade_ret = (exec_price - entry_price) / entry_price
-                        trade_returns.append(trade_ret)
-                    shares = 0.0
-                    current_pos = 0
-                    trades_count += 1
-                    entry_price = 0.0
+    else:
+        # Active Strategy: Signal[t] generated at Close[t] -> Executed at Open[t+1]
+        equity_values[0] = cash
+        pending_target = int(signals.iloc[0]) if len(signals) > 0 else 0
 
-        # Mark-to-market portfolio equity for day i
-        equity_values[i] = cash + (shares * price)
+        for i in range(1, n):
+            today_open = float(open_prices.iloc[i])
+            close_price = float(prices.iloc[i])
+
+            # Execute pending signal from previous bar at today's Open
+            if pending_target != current_pos:
+                if pending_target == 1 and current_pos == 0:
+                    # Entering Long: Buy at Open[i] * (1 + slippage)
+                    exec_price = today_open * (1.0 + slippage)
+                    if exec_price > 0 and cash > 0:
+                        trade_val = cash / (1.0 + transaction_cost)
+                        shares = trade_val / exec_price
+                        fee = trade_val * transaction_cost
+                        cash = cash - (shares * exec_price + fee)
+                        current_pos = 1
+                        trades_count += 1
+                        entry_price = exec_price
+
+                elif pending_target == 0 and current_pos == 1:
+                    # Exiting Long: Sell at Open[i] * (1 - slippage)
+                    exec_price = today_open * (1.0 - slippage)
+                    if shares > 0 and exec_price > 0:
+                        gross_proceeds = shares * exec_price
+                        fee = gross_proceeds * transaction_cost
+                        cash += (gross_proceeds - fee)
+                        if entry_price > 0:
+                            trade_ret = (exec_price - entry_price) / entry_price
+                            trade_returns.append(trade_ret)
+                        shares = 0.0
+                        current_pos = 0
+                        trades_count += 1
+                        entry_price = 0.0
+
+            # Mark-to-market equity at today's Close
+            equity_values[i] = cash + (shares * close_price)
+
+            # Generate today's signal from today's Close for tomorrow's execution
+            pending_target = int(signals.iloc[i]) if i < len(signals) else 0
 
     equity_series = pd.Series(equity_values, index=dates)
 
@@ -166,12 +202,14 @@ def simulate_strategy(
         ann_vol_pct = 0.0
         sharpe = 0.0
 
-    # Maximum Drawdown
+    # Maximum Drawdown (strictly <= 0.0)
     running_max = equity_series.cummax()
     drawdowns = (equity_series - running_max) / running_max.replace(0, np.nan)
     max_dd_pct = float(drawdowns.min() * 100.0) if not drawdowns.empty else 0.0
+    if max_dd_pct > 0.0:
+        max_dd_pct = 0.0
 
-    # Win Rate for active round-trip trades
+    # Win Rate for completed round-trip trades
     if is_buy_and_hold or len(trade_returns) == 0:
         win_rate = None
     else:
@@ -197,7 +235,7 @@ def simulate_strategy(
 # ---------------------------------------------------------------------------
 def run_benchmark_comparison(
     df: pd.DataFrame,
-    qv_probabilities: Optional[np.ndarray] = None,
+    qv_probabilities: Optional[np.ndarray],
     ticker: str = "TICKER",
     initial_capital: float = cfg.STARTING_CAPITAL,
     transaction_cost: float = cfg.TRANSACTION_COST,
@@ -207,32 +245,35 @@ def run_benchmark_comparison(
     Run backtest comparison across QuantView, Buy & Hold, and SMA50/200.
 
     Ensures all 3 strategies are evaluated over the exact same date range,
-    same trading calendar, and same starting capital.
+    same trading calendar, same starting capital, and same execution timing.
+
+    Raises ValueError if qv_probabilities is None or does not match df length.
     """
     if "Close" not in df.columns:
         raise ValueError("DataFrame must contain 'Close' price column.")
 
     prices = df["Close"].astype(float)
+    open_prices = df["Open"].astype(float) if "Open" in df.columns else prices
     n = len(prices)
-    if n < 50:
+    if n < 10:
         raise ValueError(f"Insufficient history ({n} bars) to run benchmark comparison.")
 
     dates = [d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d) for d in df.index]
 
-    # ── 1. QuantView Strategy ────────────────────────────────────────────────
-    # If OOF probabilities provided, use them; otherwise form signals from ML feature matrix
-    if qv_probabilities is not None and len(qv_probabilities) == n:
-        qv_signals = pd.Series((qv_probabilities >= 0.50).astype(int), index=df.index)
-    else:
-        # Reconstruct signal based on trend + momentum ensemble consensus if full OOF vector not supplied
-        # Long when (price > SMA50 and RSI < 70) or momentum > 0
-        p_sma50 = df.get("price_vs_sma50", pd.Series(0, index=df.index))
-        mom = df.get("momentum_20d", pd.Series(0, index=df.index))
-        qv_signals = pd.Series(((p_sma50 > 0) | (mom > 0)).astype(int), index=df.index)
+    # ── 1. QuantView Strategy (Authentic OOF Predictions) ────────────────────
+    if qv_probabilities is None or len(qv_probabilities) != n:
+        raise ValueError(
+            f"QuantView out-of-fold predictions are required for benchmark comparison "
+            f"(expected {n} probabilities, got {len(qv_probabilities) if qv_probabilities is not None else 'None'})."
+        )
+
+    # Signal formed at bar t: Long when P >= 0.50, Cash when P < 0.50
+    qv_signals = pd.Series((qv_probabilities >= 0.50).astype(int), index=df.index)
 
     qv_metrics, qv_equity, _ = simulate_strategy(
         prices=prices,
         signals=qv_signals,
+        open_prices=open_prices,
         initial_capital=initial_capital,
         transaction_cost=transaction_cost,
         slippage=slippage,
@@ -241,11 +282,11 @@ def run_benchmark_comparison(
     qv_metrics.name = "QuantView"
 
     # ── 2. Buy & Hold Strategy ───────────────────────────────────────────────
-    # Signal is always 1 from start to end
     bh_signals = pd.Series(1, index=df.index)
     bh_metrics, bh_equity, _ = simulate_strategy(
         prices=prices,
         signals=bh_signals,
+        open_prices=open_prices,
         initial_capital=initial_capital,
         transaction_cost=transaction_cost,
         slippage=slippage,
@@ -260,12 +301,13 @@ def run_benchmark_comparison(
     elif "price_vs_sma200" in df.columns:
         sma_signals = pd.Series((df["price_vs_sma200"] > 0).astype(int), index=df.index)
     else:
-        sma200 = prices.rolling(cfg.SMA_SLOW_PERIOD).mean()
-        sma_signals = pd.Series((prices > sma200).fillna(False).astype(int), index=df.index)
+        sma200 = prices.rolling(cfg.SMA_SLOW_PERIOD, min_periods=1).mean()
+        sma_signals = pd.Series((prices > sma200).astype(int), index=df.index)
 
     sma_metrics, sma_equity, _ = simulate_strategy(
         prices=prices,
         signals=sma_signals,
+        open_prices=open_prices,
         initial_capital=initial_capital,
         transaction_cost=transaction_cost,
         slippage=slippage,
@@ -274,7 +316,6 @@ def run_benchmark_comparison(
     sma_metrics.name = "SMA50/200"
 
     # ── Synchronized Daily Equity Curves ──────────────────────────────────────
-    # Downsample points for efficient web transfer if dataset is large
     step = max(1, n // 200)
     equity_curve: List[Dict[str, Any]] = []
     for i in range(0, n, step):
@@ -284,7 +325,6 @@ def run_benchmark_comparison(
             "buy_hold": round(float(bh_equity.iloc[i]), 2),
             "sma50_200": round(float(sma_equity.iloc[i]), 2),
         })
-    # Ensure final date is always included
     if equity_curve and equity_curve[-1]["date"] != dates[-1]:
         equity_curve.append({
             "date": dates[-1],
@@ -300,6 +340,7 @@ def run_benchmark_comparison(
         sc_m, _, _ = simulate_strategy(
             prices=prices,
             signals=qv_signals,
+            open_prices=open_prices,
             initial_capital=initial_capital,
             transaction_cost=c_val,
             slippage=slippage,

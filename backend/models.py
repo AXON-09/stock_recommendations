@@ -344,13 +344,17 @@ class StockRecommender:
     """
 
     def __init__(self) -> None:
-        self.xgb_model:   Optional[XGBClassifier]     = None
-        self.lstm_model:  Optional[Any]                = None   # LSTMNet | None
-        self.calibrator:  Optional[LogisticRegression] = None
-        self.xgb_scaler:  StandardScaler               = StandardScaler()
-        self.lstm_scaler: StandardScaler               = StandardScaler()
-        self.is_trained:  bool                         = False
-        self.backtest_metrics: Dict[str, Any]          = {}
+        self.xgb_model:         Optional[XGBClassifier]     = None
+        self.lstm_model:        Optional[Any]                = None   # LSTMNet | None
+        self.calibrator:        Optional[LogisticRegression] = None
+        self.xgb_scaler:        StandardScaler               = StandardScaler()
+        self.lstm_scaler:       StandardScaler               = StandardScaler()
+        self.is_trained:        bool                         = False
+        self.oof_indices:       Optional[np.ndarray]         = None
+        self.oof_probabilities: Optional[np.ndarray]         = None
+        self.oof_y:             Optional[np.ndarray]         = None
+        self.backtest_metrics:  dict[str, Any]               = {}
+
         self.trained_at: Optional[datetime]            = None
         self.data_through: Optional[str]               = None
 
@@ -483,10 +487,11 @@ class StockRecommender:
         if not folds:
             raise ValueError("Not enough data to create walk-forward folds.")
 
-        oof_xgb:  list[np.ndarray] = []
-        oof_lstm: list[np.ndarray] = []
-        oof_y:    list[np.ndarray] = []
-        lstm_available_in_fold     = False
+        oof_xgb:      list[np.ndarray] = []
+        oof_lstm:     list[np.ndarray] = []
+        oof_y:        list[np.ndarray] = []
+        oof_idx_list: list[np.ndarray] = []
+        lstm_available_in_fold         = False
 
         for fold in folds:
             X_tr = X_arr[fold.train_start: fold.train_end]
@@ -529,7 +534,6 @@ class StockRecommender:
                     sc_lstm.transform(X_tr), y_tr, epochs=cfg.LSTM_EPOCHS_FOLD
                 )
                 if lstm_fold is not None:
-                    # Line 496
                     lstm_p = self._lstm_predict_fold(lstm_fold, sc_lstm, X_tr, X_te)
                     lstm_available_in_fold = True
                 else:
@@ -541,9 +545,12 @@ class StockRecommender:
                 lstm_p = lstm_p[: len(xgb_p)]  # length guard
                 oof_lstm.append(lstm_p)
             oof_y.append(y_te)
+            oof_idx_list.append(np.arange(fold.test_start, fold.test_end))
 
         all_xgb = np.concatenate(oof_xgb)
         all_y   = np.concatenate(oof_y).astype(int)
+        self.oof_indices       = np.concatenate(oof_idx_list) if oof_idx_list else np.array([], dtype=int)
+        self.oof_y             = all_y
 
         # ── Stacking / calibration layer ─────────────────────────────────────
         # Use only XGBoost when LSTM was unavailable, to avoid fake 0.5 inputs.
@@ -560,7 +567,9 @@ class StockRecommender:
         self.calibrator.fit(oof_stack, all_y)
 
         ens_prob = self.calibrator.predict_proba(oof_stack)[:, 1]
+        self.oof_probabilities = ens_prob
         ens_pred = (ens_prob >= 0.50).astype(int)
+
 
 
         # Guard against all-same labels (prevents AUC error)

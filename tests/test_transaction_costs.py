@@ -15,7 +15,6 @@ from backtest import simulate_strategy
 def oscillating_prices():
     """Generates synthetic prices with multiple trend reversals."""
     dates = pd.date_range("2024-01-01", periods=100, freq="B")
-    # Alternating prices
     p = 100.0 + 10.0 * np.sin(np.linspace(0, 4 * np.pi, 100))
     return pd.Series(p, index=dates)
 
@@ -24,7 +23,6 @@ class TestTransactionCostsAndSlippage:
     def test_zero_costs_produce_higher_return_than_with_costs(self, oscillating_prices):
         """Active trading with transaction costs must yield lower net equity than frictionless."""
         prices = oscillating_prices
-        # Toggle signal every 10 days
         signals = pd.Series([1 if (i // 10) % 2 == 0 else 0 for i in range(len(prices))], index=prices.index)
 
         m_zero, eq_zero, _ = simulate_strategy(
@@ -54,31 +52,59 @@ class TestTransactionCostsAndSlippage:
         assert eq.iloc[-1] == 100000.0
         assert m.total_return == 0.0
 
-    def test_slippage_affects_execution_price(self):
-        """Buy execution price must be higher by (1+slippage); sell lower by (1-slippage)."""
+    def test_exact_fee_and_slippage_math(self):
+        """Verify exact mathematical deduction of trade notional, slippage, and fees."""
         dates = pd.date_range("2024-01-01", periods=3, freq="B")
-        prices = pd.Series([100.0, 105.0, 110.0], index=dates)
-        # Buy on day 0, Sell on day 1, Cash on day 2
+        df = pd.DataFrame({
+            "Open": [100.0, 100.0, 110.0],
+            "Close": [100.0, 105.0, 115.0],
+        }, index=dates)
+        # Signal is 1 at Close[0] -> buys at Open[1] = 100.0
         signals = pd.Series([1, 0, 0], index=dates)
 
-        slippage = 0.01  # 1%
-        m, eq, trade_ret = simulate_strategy(
-            prices=prices, signals=signals, initial_capital=10000.0,
-            transaction_cost=0.0, slippage=slippage,
-        )
-        # Entry price: 100 * 1.01 = 101.0
-        # Exit price: 105 * 0.99 = 103.95
-        # Expected trade return: (103.95 - 101.0) / 101.0 = ~0.029207 (2.92%)
-        assert len(trade_ret) == 1
-        expected_trade_ret = (105.0 * 0.99 - 100.0 * 1.01) / (100.0 * 1.01)
-        assert trade_ret[0] == pytest.approx(expected_trade_ret, abs=1e-5)
+        cap = 10000.0
+        cost = 0.001    # 0.10% fee
+        slip = 0.0005   # 0.05% slippage
 
-    def test_buy_and_hold_pays_minimal_trades(self, oscillating_prices):
-        """Buy & Hold should only execute 1 trade (initial purchase)."""
-        prices = oscillating_prices
-        signals = pd.Series(1, index=prices.index)
-        m, eq, _ = simulate_strategy(
-            prices=prices, signals=signals, initial_capital=100000.0,
-            transaction_cost=0.001, slippage=0.0005, is_buy_and_hold=True,
+        m, eq, trade_ret = simulate_strategy(
+            prices=df["Close"], signals=signals, open_prices=df["Open"],
+            initial_capital=cap, transaction_cost=cost, slippage=slip,
         )
-        assert m.trades == 1
+
+        # Day 1 Entry at Open[1]:
+        # exec_price = 100.0 * (1 + 0.0005) = 100.05
+        # trade_val = 10000.0 / (1 + 0.001) = 9990.00999
+        # shares = 9990.00999 / 100.05 = 99.850175
+        # fee = 9990.00999 * 0.001 = 9.99001
+        # cash = 0.0
+        # equity at Close[1] = 99.850175 * 105.0 = 10484.268
+        expected_shares = (cap / (1.0 + cost)) / (100.0 * (1.0 + slip))
+        expected_eq1 = expected_shares * 105.0
+        assert eq.iloc[1] == pytest.approx(expected_eq1, abs=1e-2)
+
+        # Day 2 Exit at Open[2] = 110.0:
+        # exec_price = 110.0 * (1 - 0.0005) = 109.945
+        # gross = 99.850175 * 109.945 = 10978.027
+        # fee = gross * 0.001 = 10.978
+        # net cash = 10967.049
+        expected_exit_p = 110.0 * (1.0 - slip)
+        expected_gross = expected_shares * expected_exit_p
+        expected_net_cash = expected_gross * (1.0 - cost)
+        assert eq.iloc[2] == pytest.approx(expected_net_cash, abs=1e-2)
+
+    def test_cost_sensitivity_monotonic_decrease(self, oscillating_prices):
+        """Higher transaction costs must strictly decrease final return for actively trading strategies."""
+        prices = oscillating_prices
+        signals = pd.Series([1 if (i // 5) % 2 == 0 else 0 for i in range(len(prices))], index=prices.index)
+
+        costs = [0.0, 0.0005, 0.001, 0.002]
+        returns = []
+        for c in costs:
+            m, _, _ = simulate_strategy(
+                prices=prices, signals=signals, initial_capital=100000.0,
+                transaction_cost=c, slippage=0.0005,
+            )
+            returns.append(m.total_return)
+
+        # Returns should be strictly descending
+        assert returns[0] > returns[1] > returns[2] > returns[3]
