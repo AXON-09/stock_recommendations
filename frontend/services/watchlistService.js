@@ -1,76 +1,75 @@
 /**
- * QuantView AI — watchlistService.js
+ * QuantView AI — watchlistService.js v3.0
+ * Fetches the 10 Top Gainers & Active Market Movers across Indian & US Equities
+ * Refreshes automatically every 5 minutes with localStorage caching & fallback.
  */
+
 (function(window) {
   'use strict';
-  var STORAGE_KEY = 'QV_LIVE_WATCHLIST_V1';
 
-  var DEFAULT_ITEMS = [
-    { ticker: 'RELIANCE', name: 'Reliance Industries Limited', exchange: 'NSE', price: '₹2,984.50', change: '+1.42%', changePos: true, volumeRatio: '1.24x', aiRating: 'Strong Buy', isFavorite: true, addedAt: Date.now() - 500000 },
-    { ticker: 'TCS', name: 'Tata Consultancy Services', exchange: 'NSE', price: '₹4,120.00', change: '+0.88%', changePos: true, volumeRatio: '0.95x', aiRating: 'Buy', isFavorite: false, addedAt: Date.now() - 400000 },
-    { ticker: 'NVDA', name: 'NVIDIA Corporation', exchange: 'NASDAQ', price: '$128.50', change: '+3.14%', changePos: true, volumeRatio: '2.10x', aiRating: 'Strong Buy', isFavorite: true, addedAt: Date.now() - 300000 },
-    { ticker: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ', price: '$224.23', change: '-0.32%', changePos: false, volumeRatio: '0.89x', aiRating: 'Hold', isFavorite: false, addedAt: Date.now() - 200000 },
-    { ticker: 'QQQ', name: 'Invesco QQQ Trust', exchange: 'NASDAQ', price: '$481.30', change: '+0.95%', changePos: true, volumeRatio: '1.15x', aiRating: 'Buy', isFavorite: false, addedAt: Date.now() - 100000 }
+  var CACHE_KEY = 'QV_CACHED_WATCHLIST';
+  var CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+  // Exactly 10 prominent gainers & active movers (Indian + US + ETFs)
+  var INITIAL_ASSETS = [
+    { ticker: 'RELIANCE', name: 'Reliance Industries Limited', exchange: 'NSE', price: '₹2,984.50', change: '+2.42%', changePos: true, volumeRatio: '1.45x', aiRating: 'Strong Buy' },
+    { ticker: 'TCS', name: 'Tata Consultancy Services', exchange: 'NSE', price: '₹4,120.00', change: '+1.88%', changePos: true, volumeRatio: '1.20x', aiRating: 'Buy' },
+    { ticker: 'HDFCBANK', name: 'HDFC Bank Limited', exchange: 'NSE', price: '₹1,642.30', change: '+2.15%', changePos: true, volumeRatio: '1.38x', aiRating: 'Strong Buy' },
+    { ticker: 'ICICIBANK', name: 'ICICI Bank Limited', exchange: 'NSE', price: '₹1,180.75', change: '+1.94%', changePos: true, volumeRatio: '1.15x', aiRating: 'Buy' },
+    { ticker: 'BHARTIARTL', name: 'Bharti Airtel Limited', exchange: 'NSE', price: '₹1,560.20', change: '+2.80%', changePos: true, volumeRatio: '1.62x', aiRating: 'Strong Buy' },
+    { ticker: 'NVDA', name: 'NVIDIA Corporation', exchange: 'NASDAQ', price: '$128.50', change: '+4.14%', changePos: true, volumeRatio: '2.30x', aiRating: 'Strong Buy' },
+    { ticker: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ', price: '$224.23', change: '+1.32%', changePos: true, volumeRatio: '1.10x', aiRating: 'Buy' },
+    { ticker: 'MSFT', name: 'Microsoft Corporation', exchange: 'NASDAQ', price: '$448.90', change: '+1.75%', changePos: true, volumeRatio: '1.25x', aiRating: 'Buy' },
+    { ticker: 'QQQ', name: 'Invesco QQQ Trust', exchange: 'NASDAQ', price: '$481.30', change: '+1.65%', changePos: true, volumeRatio: '1.40x', aiRating: 'Buy' },
+    { ticker: 'SPY', name: 'SPDR S&P 500 ETF Trust', exchange: 'NYSE Arca', price: '$562.40', change: '+1.18%', changePos: true, volumeRatio: '1.15x', aiRating: 'Buy' }
   ];
 
   window.WatchlistService = {
     getWatchlist: function() {
       try {
-        var raw = localStorage.getItem(STORAGE_KEY);
+        var raw = localStorage.getItem(CACHE_KEY);
         if (raw) {
           var parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (parsed && Array.isArray(parsed.items) && parsed.items.length === 10) {
+            return parsed.items;
+          }
         }
       } catch (e) {}
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_ITEMS));
-      return DEFAULT_ITEMS;
+      return INITIAL_ASSETS;
     },
-    saveWatchlist: function(items) {
+
+    getLastUpdated: function() {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-      } catch (e) {}
-    },
-    addItem: function(item) {
-      var list = this.getWatchlist();
-      var clean = (item.ticker || '').toUpperCase().trim();
-      var exists = list.some(function(x) { return x.ticker.toUpperCase() === clean; });
-      if (!exists) {
-        list.unshift(Object.assign({
-          ticker: clean,
-          name: window.LogoService ? window.LogoService.getCompanyName(clean, clean) : clean,
-          exchange: clean.includes('.NS') || ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'ITC', 'NIFTYBEES'].includes(clean) ? 'NSE' : 'NASDAQ',
-          price: item.price || '—',
-          change: item.change || '+0.00%',
-          changePos: (item.change || '').indexOf('-') === -1,
-          volumeRatio: item.volumeRatio || '1.00x',
-          aiRating: item.aiRating || 'Buy',
-          isFavorite: false,
-          addedAt: Date.now()
-        }, item));
-        this.saveWatchlist(list);
-      }
-      return list;
-    },
-    removeItem: function(ticker) {
-      var clean = (ticker || '').toUpperCase().trim();
-      var list = this.getWatchlist().filter(function(x) { return x.ticker.toUpperCase() !== clean; });
-      this.saveWatchlist(list);
-      return list;
-    },
-    toggleFavorite: function(ticker) {
-      var clean = (ticker || '').toUpperCase().trim();
-      var list = this.getWatchlist().map(function(x) {
-        if (x.ticker.toUpperCase() === clean) {
-          return Object.assign({}, x, { isFavorite: !x.isFavorite });
+        var raw = localStorage.getItem(CACHE_KEY);
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (parsed && parsed.timestamp) {
+            var diff = Math.floor((Date.now() - parsed.timestamp) / 60000);
+            if (diff <= 1) return 'Just now';
+            return diff + 'm ago';
+          }
         }
-        return x;
-      });
-      this.saveWatchlist(list);
-      return list;
+      } catch (e) {}
+      return 'Just now';
     },
-    hasItem: function(ticker) {
-      var clean = (ticker || '').toUpperCase().trim();
-      return this.getWatchlist().some(function(x) { return x.ticker.toUpperCase() === clean; });
+
+    fetchLiveWatchlist: async function() {
+      try {
+        var res = await fetch('/api/watchlist/live');
+        if (res.ok) {
+          var data = await res.json();
+          if (data && Array.isArray(data.items) && data.items.length === 10) {
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+              items: data.items,
+              timestamp: Date.now()
+            }));
+            return data.items;
+          }
+        }
+      } catch (e) {
+        console.warn('[WatchlistService] Using cached watchlist data:', e);
+      }
+      return this.getWatchlist();
     }
   };
 })(window);

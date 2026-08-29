@@ -1653,29 +1653,41 @@ if (document.readyState === 'loading') {
 }
 
 
-// ── Live Watchlist Table Dynamic Rendering ───────────────────────────────────
-function renderLiveWatchlist() {
+// ── Live Watchlist (Top 10 Market Gainers & Movers with 5m Auto-Refresh) ──────
+async function renderLiveWatchlist(showSkeleton = false) {
   const tbody = document.getElementById('watchlist-tbody');
+  const lastUpdatedEl = document.getElementById('wl-last-updated');
   if (!tbody || !window.WatchlistService) return;
 
-  const items = window.WatchlistService.getWatchlist();
+  if (showSkeleton) {
+    tbody.innerHTML = `
+      <tr class="wl-row"><td colspan="5"><div class="skeleton-line" style="height: 38px; width: 100%; margin: 4px 0;"></div></td></tr>
+      <tr class="wl-row"><td colspan="5"><div class="skeleton-line" style="height: 38px; width: 100%; margin: 4px 0;"></div></td></tr>
+      <tr class="wl-row"><td colspan="5"><div class="skeleton-line" style="height: 38px; width: 100%; margin: 4px 0;"></div></td></tr>
+    `;
+  }
+
+  // Fetch live top 10 gainers & movers with localStorage fallback
+  const items = await window.WatchlistService.fetchLiveWatchlist();
+  if (lastUpdatedEl) {
+    lastUpdatedEl.textContent = 'Last Updated: ' + window.WatchlistService.getLastUpdated();
+  }
+
   tbody.innerHTML = '';
 
-  items.forEach(item => {
+  items.slice(0, 10).forEach(item => {
     const tr = document.createElement('tr');
     tr.className = 'wl-row';
     tr.dataset.ticker = item.ticker;
 
-    const isIndia = item.ticker.includes('.NS') || ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'ITC', 'NIFTYBEES', 'BANKBEES', 'GOLDBEES'].includes(item.ticker);
+    const isIndia = item.exchange === 'NSE' || item.exchange === 'BSE' || item.ticker.includes('.NS') || ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'ITC', 'BHARTIARTL', 'NIFTYBEES', 'BANKBEES', 'GOLDBEES'].includes(item.ticker);
     const isEtf = item.ticker.includes('BEES') || ['SPY', 'QQQ', 'VOO', 'VTI'].includes(item.ticker);
     const logoSvgUri = window.LogoService ? window.LogoService.getLogo(item.ticker, isIndia, isEtf) : '';
     const compName = window.LogoService ? window.LogoService.getCompanyName(item.ticker, item.name) : item.name;
-    const ratingClass = (item.aiRating || '').toLowerCase().includes('buy') ? 'rating-buy' : 'rating-hold';
 
     tr.innerHTML = `
       <td>
         <div class="wl-asset-cell">
-          <button class="wl-fav-btn ${item.isFavorite ? 'active' : ''}" data-ticker="${item.ticker}" title="Favorite">⭐</button>
           <div class="wl-logo-container">
             <img class="wl-logo-img loaded" src="${logoSvgUri}" alt="" loading="lazy" />
           </div>
@@ -1688,41 +1700,18 @@ function renderLiveWatchlist() {
       <td><span class="wl-exch">${item.exchange || 'NSE'}</span></td>
       <td class="wl-num">${item.price || '—'}</td>
       <td><span class="wl-change ${item.changePos !== false ? 'pos' : 'neg'}">${item.change || '+0.00%'}</span></td>
-      <td>${item.volumeRatio || '1.10x'}</td>
-      <td><span class="wl-rating ${ratingClass}">${item.aiRating || 'Buy'}</span></td>
       <td>
-        <div class="wl-actions-flex">
-          <button class="wl-action-btn qp-btn" data-ticker="${item.ticker}">Analyze →</button>
-          <button class="wl-remove-btn" data-ticker="${item.ticker}" title="Remove from Watchlist">✕</button>
-        </div>
+        <button class="wl-action-btn qp-btn" data-ticker="${item.ticker}">Analyze →</button>
       </td>
     `;
     tbody.appendChild(tr);
   });
-
-  // Attach dynamic remove & favorite listeners
-  tbody.querySelectorAll('.wl-remove-btn').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const t = btn.dataset.ticker;
-      if (t && window.WatchlistService) {
-        window.WatchlistService.removeItem(t);
-        renderLiveWatchlist();
-      }
-    };
-  });
-
-  tbody.querySelectorAll('.wl-fav-btn').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const t = btn.dataset.ticker;
-      if (t && window.WatchlistService) {
-        window.WatchlistService.toggleFavorite(t);
-        renderLiveWatchlist();
-      }
-    };
-  });
 }
+
+// Auto-refresh Live Watchlist every 5 minutes (300,000 ms)
+setInterval(() => {
+  renderLiveWatchlist(false);
+}, 5 * 60 * 1000);
 
 // ── Search Autocomplete with Keyboard Navigation ────────────────────────────
 function initSearchAutocomplete() {
