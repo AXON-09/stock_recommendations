@@ -34,10 +34,20 @@ from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import requests
 import yfinance as yf
 import warnings
 
 warnings.filterwarnings("ignore")
+
+_SESSION = requests.Session()
+_SESSION.headers.update({
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like"
+        " Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+})
 
 import config as cfg
 from market import MarketInfo, get_market_info, get_peer_pe
@@ -124,7 +134,7 @@ def fetch_raw_data(ticker: str, period: str = cfg.HISTORY_PERIOD_FEATURES) -> pd
         RuntimeError: on network / API failures.
     """
     try:
-        tk = yf.Ticker(ticker)
+        tk = yf.Ticker(ticker, session=_SESSION)
         df = tk.history(period=period, auto_adjust=True)
     except Exception as exc:
         raise RuntimeError(
@@ -153,10 +163,11 @@ def fetch_raw_data(ticker: str, period: str = cfg.HISTORY_PERIOD_FEATURES) -> pd
 def fetch_info(ticker: str) -> dict:
     """Fetch fundamental metadata. Returns empty dict on any failure."""
     try:
-        info = yf.Ticker(ticker).info
+        info = yf.Ticker(ticker, session=_SESSION).info
         return info if isinstance(info, dict) else {}
     except Exception:
         return {}
+
 
 
 def _make_display_ticker(ticker: str) -> str:

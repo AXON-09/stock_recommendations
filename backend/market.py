@@ -20,9 +20,23 @@ from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
+import requests
 import yfinance as yf
 
 log = logging.getLogger(__name__)
+
+# Shared browser-like session to avoid Yahoo Finance 429/401 blocks on cloud IPs
+_SESSION = requests.Session()
+_SESSION.headers.update({
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like"
+        " Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+})
+
+# In-memory cache for peer median P/Es to avoid repeated network calls
+_PEER_PE_CACHE: dict[str, Optional[float]] = {}
 
 # ---------------------------------------------------------------------------
 # Market metadata
@@ -399,15 +413,19 @@ def get_peer_pe(sector: str, market: MarketInfo) -> Optional[float]:
 
 def _india_peer_pe(sector: str) -> Optional[float]:
     """Median trailing P/E from the Indian peer universe for a given sector."""
+    if sector in _PEER_PE_CACHE:
+        return _PEER_PE_CACHE[sector]
+
     peers = INDIA_SECTOR_PEERS.get(sector)
     if not peers:
         log.debug("_india_peer_pe: no peers configured for sector '%s'", sector)
+        _PEER_PE_CACHE[sector] = None
         return None
 
     pe_values: list[float] = []
     for peer in peers:
         try:
-            info = yf.Ticker(peer).info
+            info = yf.Ticker(peer, session=_SESSION).info
             pe   = info.get("trailingPE") or info.get("forwardPE")
             if pe and np.isfinite(pe) and 0 < pe < 500:
                 pe_values.append(float(pe))
@@ -415,9 +433,25 @@ def _india_peer_pe(sector: str) -> Optional[float]:
             continue
 
     if not pe_values:
-        return None
+        # Fallback default sector median approximations if Yahoo rate limits
+        _SECTOR_DEFAULTS = {
+            "Technology": 28.0,
+            "Financial Services": 18.0,
+            "Energy": 14.0,
+            "Healthcare": 32.0,
+            "Consumer Defensive": 42.0,
+            "Consumer Cyclical": 30.0,
+            "Basic Materials": 15.0,
+            "Industrials": 25.0,
+            "Utilities": 16.0,
+            "Communication Services": 22.0,
+        }
+        val = _SECTOR_DEFAULTS.get(sector)
+        _PEER_PE_CACHE[sector] = val
+        return val
 
     median_pe = float(np.median(pe_values))
+    _PEER_PE_CACHE[sector] = median_pe
     log.debug(
         "_india_peer_pe: sector='%s' peers_found=%d median_pe=%.1f",
         sector, len(pe_values), median_pe,
@@ -427,14 +461,23 @@ def _india_peer_pe(sector: str) -> Optional[float]:
 
 def _us_sector_pe(sector: str) -> Optional[float]:
     """Sector ETF P/E for US stocks."""
+    if sector in _PEER_PE_CACHE:
+        return _PEER_PE_CACHE[sector]
+
     etf = _US_SECTOR_ETFS.get(sector)
     if not etf:
+        _PEER_PE_CACHE[sector] = None
         return None
     try:
-        info = yf.Ticker(etf).info
+        info = yf.Ticker(etf, session=_SESSION).info
         val  = info.get("trailingPE") or info.get("forwardPE")
         if val and np.isfinite(val) and 0 < val < 500:
-            return float(val)
+            res = float(val)
+            _PEER_PE_CACHE[sector] = res
+            return res
+        _PEER_PE_CACHE[sector] = None
         return None
     except Exception:
+        _PEER_PE_CACHE[sector] = None
         return None
+
