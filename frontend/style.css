@@ -94,7 +94,7 @@ body {
   -webkit-backdrop-filter: blur(20px);
   display: flex;
   flex-direction: column;
-  padding: 1.5rem 1rem;
+  padding: 0 1rem 1.5rem 1rem;
   position: fixed;
   top: 0;
   bottom: 0;
@@ -104,12 +104,14 @@ body {
 }
 
 .sidebar-brand {
+  height: 64px;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0 0.5rem 1.5rem;
+  padding: 0 0.5rem;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
+  box-sizing: border-box;
 }
 
 .brand-logo-icon {
@@ -283,7 +285,7 @@ body {
 .glass-navbar {
   height: 64px;
   background: rgba(11, 17, 32, 0.8);
-  border-bottom: none;
+  border-bottom: 1px solid var(--border);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   position: sticky;
@@ -293,6 +295,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 2rem;
+  box-sizing: border-box;
 }
 
 .navbar-left {
