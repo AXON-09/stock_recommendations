@@ -298,7 +298,7 @@ function renderInstitutionalIntelligence(data) {
   section.classList.remove('hidden');
 
   const isIndia = data.market ? data.market.is_india : (data.ticker.endsWith('.NS') || data.ticker.endsWith('.BO'));
-  const currSym = isIndia ? '₹' : '$';
+  const currSym = data.market?.currency_symbol || (isIndia ? '₹' : '$');
   const currCode = isIndia ? 'INR' : 'USD';
 
   // 1. Analyst Consensus
@@ -326,7 +326,7 @@ function renderInstitutionalIntelligence(data) {
 
   // Calculate needle angle (-70deg to +70deg from score 0-100)
   if (needleEl) {
-    const score = inst.analyst_score !== undefined ? inst.analyst_score : 50;
+    const score = (inst.analyst_score !== undefined && inst.analyst_score !== null) ? inst.analyst_score : 50;
     const angle = ((score / 100) * 140) - 70;
     const rad = (angle - 90) * (Math.PI / 180);
     const x2 = (27 + 18 * Math.cos(rad)).toFixed(1);
@@ -334,7 +334,11 @@ function renderInstitutionalIntelligence(data) {
     needleEl.setAttribute('x2', x2);
     needleEl.setAttribute('y2', y2);
     if (pathEl) {
-      pathEl.style.stroke = score >= 60 ? '#10b981' : (score <= 35 ? '#ef4444' : '#f59e0b');
+      const color = score >= 60 ? '#10b981' : (score <= 35 ? '#ef4444' : '#f59e0b');
+      pathEl.style.stroke = color;
+      const totalLen = 72.2;
+      const dash = Math.max(5, (score / 100) * totalLen);
+      pathEl.style.strokeDasharray = `${dash} ${totalLen - dash}`;
     }
   }
 
@@ -343,9 +347,11 @@ function renderInstitutionalIntelligence(data) {
   const targetCountEl = document.getElementById('inst-target-analysts');
   if (targetPriceEl) {
     if (inst.target_price !== null && inst.target_price !== undefined && inst.target_price > 0) {
-      targetPriceEl.innerHTML = `${currSym}${inst.target_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="inst-curr">${currCode}</span>`;
+      animateNumber(targetPriceEl, 0, inst.target_price, 750, v =>
+        `${currSym}${v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="inst-curr">${currCode}</span>`
+      );
       if (targetCountEl) {
-        targetCountEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts` : 'Target Price';
+        targetCountEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts coverage` : '12-Month Target Price';
       }
     } else {
       targetPriceEl.textContent = 'N/A';
@@ -402,7 +408,11 @@ function renderInstitutionalIntelligence(data) {
     }
   }
   if (psValEl) {
-    psValEl.textContent = (inst.ps_ratio !== null && inst.ps_ratio !== undefined) ? `${inst.ps_ratio} x` : 'N/A';
+    if (inst.ps_ratio !== null && inst.ps_ratio !== undefined) {
+      animateNumber(psValEl, 0, inst.ps_ratio, 750, v => `${v.toFixed(2)} x`);
+    } else {
+      psValEl.textContent = 'N/A';
+    }
   }
 
   // 5. Trading Volume
@@ -430,8 +440,21 @@ function renderInstitutionalIntelligence(data) {
     }
   }
   if (profValEl) {
-    profValEl.textContent = (inst.gross_margin_pct !== null && inst.gross_margin_pct !== undefined) ? `${inst.gross_margin_pct} %` : 'N/A';
+    if (inst.gross_margin_pct !== null && inst.gross_margin_pct !== undefined) {
+      animateNumber(profValEl, 0, inst.gross_margin_pct, 750, v => `${v.toFixed(2)} %`);
+    } else {
+      profValEl.textContent = 'N/A';
+    }
   }
+
+  // Animate mini cards with subtle stagger
+  const miniCards = section.querySelectorAll('.inst-mini-card');
+  miniCards.forEach((mc, idx) => {
+    mc.classList.remove('qv-card-reveal');
+    mc.style.animationDelay = `${idx * 40}ms`;
+    void mc.offsetWidth;
+    mc.classList.add('qv-card-reveal');
+  });
 }
 
 // ── Ticker-Specific Live News Stories Module ─────────────────────────────────
@@ -2372,6 +2395,7 @@ function initSidebarNavigation() {
   const navItems = [
     { id: 'nav-link-dash', target: '#result-panel', isDash: true },
     { id: 'nav-link-chart', target: '#stock-chart-card', requiresAnalysis: true },
+    { id: 'nav-link-inst', target: '#institutional-section', requiresAnalysis: true },
     { id: 'nav-link-shap', target: '#shap-card', requiresAnalysis: true },
     { id: 'nav-link-benchmark', target: '#benchmark-card', requiresAnalysis: true },
     { id: 'nav-link-watchlist', target: '#market-watchlist' },
