@@ -29,6 +29,7 @@ signal (shown in the UI) and is intentionally excluded from ML features.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -48,6 +49,32 @@ _SESSION.headers.update({
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 })
+
+
+def _get_google_pe(ticker: str) -> Optional[float]:
+    """Fetch live official P/E ratio from Google Finance (open endpoint, never 401s on cloud IPs)."""
+    t = ticker.upper().strip()
+    queries = []
+    if t.endswith(".NS"):
+        queries = [f"{t[:-3]}:NSE", f"{t[:-3]}:BOM"]
+    elif t.endswith(".BO"):
+        queries = [f"{t[:-3]}:BOM", f"{t[:-3]}:NSE"]
+    else:
+        queries = [f"{t}:NASDAQ", f"{t}:NYSE"]
+
+    for q in queries:
+        try:
+            r = _SESSION.get(f"https://www.google.com/finance/quote/{q}", timeout=3)
+            if r.status_code == 200:
+                m = re.search(r"P/E ratio</div><div[^>]*>([0-9,.]+)", r.text)
+                if m:
+                    val = float(m.group(1).replace(",", ""))
+                    if val > 0:
+                        return val
+        except Exception:
+            pass
+    return None
+
 
 import config as cfg
 from market import MarketInfo, get_market_info, get_peer_pe, _get_crumb, lookup_sector_fallback, _SESSION
@@ -213,7 +240,13 @@ def fetch_info(ticker: str) -> dict:
         except Exception:
             pass
 
-    # Tier 3: Sector resolution fallback
+    # Tier 3: Google Finance live P/E fallback (100% cloud-reliable)
+    if not info.get("trailingPE"):
+        g_pe = _get_google_pe(ticker)
+        if g_pe:
+            info["trailingPE"] = g_pe
+
+    # Tier 4: Sector resolution fallback
     sec = info.get("sector")
     if not sec or sec == "Unknown" or sec is None:
         try:
@@ -224,6 +257,7 @@ def fetch_info(ticker: str) -> dict:
             pass
 
     return info
+
 
 
 
