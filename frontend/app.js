@@ -1275,22 +1275,340 @@ document.addEventListener('click', e => {
   }
 });
 
-// Initialize watchlist logos
-function initWatchlistLogos() {
-  if (!window.QVLogos) return;
-  document.querySelectorAll('.wl-logo-img').forEach(img => {
-    const ticker = img.dataset.ticker;
-    if (ticker) {
-      const isIndia = ticker.includes('.NS') || ticker.includes('.BO') || ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'ITC', 'NIFTYBEES'].includes(ticker);
-      const isEtf = ticker.includes('BEES') || ['SPY', 'QQQ', 'VOO', 'VTI'].includes(ticker);
-      window.QVLogos.renderLogo(img, ticker, isIndia, isEtf);
+
+// ── Market News & Intelligence Portal Logic ─────────────────────────────────
+const NEWS_STORIES_DATA = {
+  '1': {
+    source: 'Bloomberg Terminal',
+    time: '12m ago',
+    sentiment: '● Bullish (+84%)',
+    sentimentClass: 'bullish',
+    headline: 'Fed Signals Steady Rate Trajectory as Megacap AI Capex Continues Accelerating',
+    p1: 'Federal Reserve officials signaled a measured and data-dependent monetary policy path, reducing interest rate volatility while enterprise cloud hyperscalers expanded global compute budgets. Institutional trading volume in semiconductor leaders increased 24% above 30-day moving averages.',
+    p2: 'Forward earnings guidance indicates strong capital efficiency, with high-margin AI subscription tiers buffering operating margins across software and platform ecosystems. QuantView momentum indicators show broad multi-quarter upside momentum.',
+    factor: 'Momentum + High Beta Multi-Asset',
+    vol: 'Contraction (Low ATR)',
+    weight: '+14% Bullish Probability',
+    tickers: ['AAPL', 'MSFT', 'NVDA', 'SPY', 'QQQ']
+  },
+  '2': {
+    source: 'Economic Times',
+    time: '28m ago',
+    sentiment: '● Bullish Flow (+91%)',
+    sentimentClass: 'bullish',
+    headline: 'FII Net Inflows Hit 4-Month High in NSE Bluechips; Banking & Energy Lead Accumulation',
+    p1: 'Foreign institutional investors turned strong net purchasers on the National Stock Exchange, accumulating ₹8,420 Cr worth of large-cap equities. Liquidity concentrated heavily in heavyweights HDFC Bank, Reliance Industries, and Tata Consultancy Services.',
+    p2: 'Domestic mutual fund systemic investment plans (SIP) reached new record highs, providing strong institutional bid support and reinforcing positive trend structure on the Nifty 50 and Bank Nifty indices.',
+    factor: 'Institutional Liquidity & Inflow Momentum',
+    vol: 'Normal Regime',
+    weight: '+18% Long Allocation',
+    tickers: ['RELIANCE', 'TCS', 'HDFCBANK', 'NIFTYBEES', 'BANKBEES']
+  },
+  '3': {
+    source: 'QuantView Research',
+    time: '45m ago',
+    sentiment: '● Volatility Regime',
+    sentimentClass: 'neutral',
+    headline: 'ATR Volatility Compression Signals Imminent Directional Expansion in Global Indices',
+    p1: 'Our algorithmic volatility filters show Average True Range (ATR%) contracting to the 4th percentile of 3-year historical distribution. Historically, periods of tight consolidation across S&P 500 and Nifty 50 precede directional expansions of 4-7% within 20 trading sessions.',
+    p2: 'Traders are advised to watch Bollinger band breakout triggers with volume confirmation to align with the higher-probability regime break.',
+    factor: 'Volatility Squeeze & Range Expansion',
+    vol: 'Compression → Imminent Breakout',
+    weight: 'Delta-Neutral to Trend Continuation',
+    tickers: ['SPY', 'QQQ', 'NIFTYBEES']
+  },
+  '4': {
+    source: 'Reuters Finance',
+    time: '1h ago',
+    sentiment: '● High Conviction (+88%)',
+    sentimentClass: 'bullish',
+    headline: 'Semiconductor Order Backlog Reaches Record High as Enterprise LLM Deployment Expands',
+    p1: 'Lead times for AI acceleration silicon remain elevated through early 2027 as enterprise data center modernization transitions from pilot projects to full production deployments. Supply chain checks reveal sustained yield improvements.',
+    p2: 'Operating margins across top semiconductor foundries and design houses continue expanding, validating QuantView fundamental quality scores.',
+    factor: 'Fundamental Earnings Momentum',
+    vol: 'Elevated High-Beta Growth',
+    weight: '+16% Technology Weight',
+    tickers: ['NVDA', 'AMD', 'MSFT']
+  },
+  '5': {
+    source: 'Mint & RBI Desk',
+    time: '2h ago',
+    sentiment: '● Macro Strength (+79%)',
+    sentimentClass: 'bullish',
+    headline: 'India Manufacturing PMI Expands to 58.6; Industrial Capex Cycle Hits Decade High',
+    p1: 'Purchasing Managers Index (PMI) data confirmed robust private capital expenditure across heavy engineering, automotive, and infrastructure sectors. Core industrial credit growth accelerated to 14.2% YoY.',
+    p2: 'Easing input inflation combined with sustained urban consumption creates favorable macroeconomic tailwinds for domestic cyclical leaders.',
+    factor: 'Macro Capex & Industrial GDP',
+    vol: 'Stable Low Volatility',
+    weight: '+10% India Cyclicals',
+    tickers: ['RELIANCE', 'ONGC', 'TATAMOTORS', 'LT']
+  },
+  '6': {
+    source: 'Financial Times',
+    time: '3h ago',
+    sentiment: '● Risk Off Warning (-54%)',
+    sentimentClass: 'bearish',
+    headline: 'Treasury Yield Curve Steepens as Sovereign Debt Issuance Surpasses Expectations',
+    p1: 'Yields on 10-year benchmark government debt moved higher, leading quantitative risk parity algorithms to execute tactical rebalancing into short-duration cash equivalents and gold hedges.',
+    p2: 'Asset managers recommend maintaining strict stop-loss discipline and favoring low-beta, high-dividend defensive equities until rate stability resumes.',
+    factor: 'Sovereign Yield Sensitivity',
+    vol: 'Elevated Fixed Income Vol',
+    weight: '-8% High Duration Growth',
+    tickers: ['GLD', 'GOLDBEES', 'SILVERBEES']
+  },
+  '7': {
+    source: 'CNBC-TV18',
+    time: '4h ago',
+    sentiment: '● Buy Signal (+76%)',
+    sentimentClass: 'bullish',
+    headline: 'IT Services Rebound: Deal Total Contract Value (TCV) Up 14% on Cloud Migration Pipelines',
+    p1: 'Large Indian and multinational technology consulting firms reported improved pipeline conversion and multi-year cloud transformation contract renewals across European and North American financial clients.',
+    p2: 'Staff utilization rates optimized to 86%, driving sequential EBIT margin expansion and triggering positive technical trend reversals.',
+    factor: 'Services TCV & Margin Rebound',
+    vol: 'Normalizing',
+    weight: '+11% IT Services',
+    tickers: ['TCS', 'INFY', 'HCLTECH', 'WIPRO']
+  },
+  '8': {
+    source: 'QuantView Signals',
+    time: '5h ago',
+    sentiment: '● Ensemble Consensus',
+    sentimentClass: 'bullish',
+    headline: 'Ensemble Model Cross-Asset Breadth Indicator Reaches Optimal Trend Alignment',
+    p1: 'QuantView proprietary 20-day walk-forward ensemble models (combining LSTM sequential memory and XGBoost gradient trees) recorded a 78% bullish consensus across 80% of monitored bluechip universe constituents.',
+    p2: 'Breadth indicators show healthy volume confirmation with over 72% of stocks trading above their respective 50-day moving averages.',
+    factor: 'Cross-Asset Algorithmic Breadth',
+    vol: 'Favorable Expansion Regime',
+    weight: '+20% Systematic Exposure',
+    tickers: ['NIFTYBEES', 'BANKBEES', 'SPY']
+  }
+};
+
+function initNewsPortal() {
+  let activeCategory = 'all';
+  let searchQuery = '';
+  let isNewsOnlyMode = false;
+
+  const newsCards = document.querySelectorAll('.news-item-card');
+  const catPills = document.querySelectorAll('.news-cat-pill');
+  const searchInput = document.getElementById('news-search-input');
+  const searchClear = document.getElementById('news-search-clear');
+  const noResults = document.getElementById('news-no-results');
+  const resetBtn = document.getElementById('btn-reset-news-filter');
+  const toggleViewBtn = document.getElementById('btn-toggle-news-view');
+  const toggleText = document.getElementById('news-toggle-text');
+  const navLinkNews = document.getElementById('nav-link-news');
+  const navLinkDash = document.getElementById('nav-link-dash');
+
+  function filterNews() {
+    let visibleCount = 0;
+    const query = (searchQuery || '').toLowerCase().trim();
+
+    newsCards.forEach(card => {
+      const cat = (card.dataset.category || '').toLowerCase();
+      const headline = (card.querySelector('.news-headline')?.textContent || '').toLowerCase();
+      const snippet = (card.querySelector('.news-snippet')?.textContent || '').toLowerCase();
+      const tickers = (card.dataset.tickers || '').toLowerCase();
+      const source = (card.querySelector('.news-source')?.textContent || '').toLowerCase();
+
+      // Category match
+      let matchCat = (activeCategory === 'all');
+      if (!matchCat) {
+        matchCat = cat.includes(activeCategory);
+      }
+
+      // Search match
+      let matchSearch = true;
+      if (query) {
+        matchSearch = headline.includes(query) || snippet.includes(query) || tickers.includes(query) || source.includes(query);
+      }
+
+      if (matchCat && matchSearch) {
+        card.style.display = 'flex';
+        visibleCount++;
+      } else {
+        card.style.display = 'none';
+      }
+    });
+
+    if (noResults) {
+      noResults.classList.toggle('hidden', visibleCount > 0);
     }
+  }
+
+  // Category pill clicks
+  catPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      catPills.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      activeCategory = pill.dataset.cat || 'all';
+      filterNews();
+    });
   });
+
+  // Search input
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      searchQuery = e.target.value;
+      if (searchClear) {
+        searchClear.classList.toggle('hidden', !searchQuery);
+      }
+      filterNews();
+    });
+  }
+
+  if (searchClear) {
+    searchClear.addEventListener('click', () => {
+      searchInput.value = '';
+      searchQuery = '';
+      searchClear.classList.add('hidden');
+      filterNews();
+    });
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      activeCategory = 'all';
+      searchQuery = '';
+      if (searchInput) searchInput.value = '';
+      if (searchClear) searchClear.classList.add('hidden');
+      catPills.forEach(p => p.classList.toggle('active', p.dataset.cat === 'all'));
+      filterNews();
+    });
+  }
+
+  // Toggle News Only Mode
+  function setNewsOnlyMode(enabled) {
+    isNewsOnlyMode = enabled;
+    const dashboardMain = document.querySelector('.dashboard-main');
+    if (!dashboardMain) return;
+
+    if (isNewsOnlyMode) {
+      dashboardMain.classList.add('news-only-active');
+      if (toggleText) toggleText.textContent = '← Back to Full Dashboard';
+      if (toggleViewBtn) toggleViewBtn.classList.add('active-mode');
+      if (navLinkNews) navLinkNews.classList.add('active');
+      if (navLinkDash) navLinkDash.classList.remove('active');
+      
+      const newsSection = document.getElementById('market-news');
+      if (newsSection) {
+        newsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    } else {
+      dashboardMain.classList.remove('news-only-active');
+      if (toggleText) toggleText.textContent = 'Focus: News Only Mode';
+      if (toggleViewBtn) toggleViewBtn.classList.remove('active-mode');
+      if (navLinkNews) navLinkNews.classList.remove('active');
+      if (navLinkDash) navLinkDash.classList.add('active');
+    }
+  }
+
+  if (toggleViewBtn) {
+    toggleViewBtn.addEventListener('click', () => {
+      setNewsOnlyMode(!isNewsOnlyMode);
+    });
+  }
+
+  // Sidebar link clicks
+  if (navLinkNews) {
+    navLinkNews.addEventListener('click', (e) => {
+      e.preventDefault();
+      setNewsOnlyMode(true);
+    });
+  }
+
+  if (navLinkDash) {
+    navLinkDash.addEventListener('click', (e) => {
+      if (isNewsOnlyMode) {
+        e.preventDefault();
+        setNewsOnlyMode(false);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    });
+  }
+
+  // Full Story Modal
+  const modalOverlay = document.getElementById('news-modal-overlay');
+  const modalClose = document.getElementById('news-modal-close');
+
+  function openNewsModal(newsId) {
+    const data = NEWS_STORIES_DATA[newsId];
+    if (!data || !modalOverlay) return;
+
+    document.getElementById('nm-source').textContent = data.source;
+    document.getElementById('nm-time').textContent = data.time;
+    
+    const sentEl = document.getElementById('nm-sentiment');
+    sentEl.textContent = data.sentiment;
+    sentEl.className = `news-badge-sentiment ${data.sentimentClass}`;
+
+    document.getElementById('nm-headline').textContent = data.headline;
+    document.getElementById('nm-paragraph1').textContent = data.p1;
+    document.getElementById('nm-paragraph2').textContent = data.p2;
+
+    document.getElementById('nm-factor').textContent = data.factor;
+    document.getElementById('nm-vol').textContent = data.vol;
+    document.getElementById('nm-weight').textContent = data.weight;
+
+    const tickersList = document.getElementById('nm-tickers-list');
+    if (tickersList) {
+      tickersList.innerHTML = '';
+      data.tickers.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'nm-ticker-btn qp-btn';
+        btn.dataset.ticker = t;
+        btn.innerHTML = `<span>${t}</span> · Analyze →`;
+        btn.onclick = () => {
+          modalOverlay.classList.add('hidden');
+          setNewsOnlyMode(false);
+          tickerInput.value = t;
+          analyze(t);
+        };
+        tickersList.appendChild(btn);
+      });
+    }
+
+    modalOverlay.classList.remove('hidden');
+  }
+
+  // Attach click listeners for "Full Story →" buttons
+  document.querySelectorAll('.news-read-more-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const newsId = btn.dataset.newsId;
+      if (newsId) openNewsModal(newsId);
+    });
+  });
+
+  // Clicking anywhere on card also opens modal
+  newsCards.forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.qp-btn')) return;
+      const newsId = card.querySelector('.news-read-more-btn')?.dataset.newsId;
+      if (newsId) openNewsModal(newsId);
+    });
+  });
+
+  if (modalClose) {
+    modalClose.addEventListener('click', () => {
+      modalOverlay.classList.add('hidden');
+    });
+  }
+
+  if (modalOverlay) {
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) modalOverlay.classList.add('hidden');
+    });
+  }
 }
 
+// Global initialization
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initWatchlistLogos);
+  document.addEventListener('DOMContentLoaded', () => {
+    initWatchlistLogos();
+    initNewsPortal();
+  });
 } else {
   initWatchlistLogos();
+  initNewsPortal();
 }
-

@@ -32,7 +32,7 @@
 
     <div class="sidebar-menu-group">
       <div class="sidebar-label">Intelligence</div>
-      <a href="#result-panel" class="sidebar-link active">
+      <a href="#result-panel" id="nav-link-dash" class="sidebar-link active">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
         <span>Dashboard</span>
         <span class="sidebar-link-glow"></span>
@@ -53,7 +53,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
         <span>Live Watchlist</span>
       </a>
-      <a href="#market-news" class="sidebar-link">
+      <a href="#market-news" id="nav-link-news" class="sidebar-link">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path><path d="M18 14h-8"></path><path d="M15 18h-5"></path><path d="M10 6h8v4h-8V6Z"></path></svg>
         <span>Market News</span>
       </a>
@@ -793,59 +793,226 @@
         </div>
       </section>
 
-      <!-- ─────────────────── MARKET NEWS & INTELLIGENCE ─────────────────── -->
+      <!-- ─────────────────── MARKET NEWS & INTELLIGENCE PORTAL ─────────────────── -->
       <section class="market-news-section" id="market-news">
-        <div class="card glass">
-          <div class="card-header-flex">
+        <div class="card glass news-main-card">
+          <div class="card-header-flex news-portal-header">
             <div>
-              <h2 class="card-title" style="margin-bottom: 0.2rem;">MARKET SENTIMENT &amp; QUANT NEWS</h2>
-              <span class="card-subtag">Real-time macro, liquidity &amp; algorithmic indicators</span>
+              <div class="news-header-badge-row">
+                <span class="news-live-tag"><span class="pulse-dot"></span> Real-time Intelligence Feed</span>
+                <span class="news-wire-tag">Terminal Wire v3.2</span>
+              </div>
+              <h2 class="card-title" style="margin: 0.35rem 0 0.2rem; font-size: 1.3rem;">MARKET SENTIMENT &amp; QUANTITATIVE NEWS</h2>
+              <span class="card-subtag">Institutional macro indicators, algorithmic liquidity shifts, and real-time earnings signals</span>
             </div>
-            <span class="news-live-tag">Updated 5m ago</span>
+            <div class="news-view-controls">
+              <button id="btn-toggle-news-view" class="btn-news-toggle" title="Toggle between Dashboard View and Full News Only Mode">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="news-toggle-icon"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+                <span id="news-toggle-text">Focus: News Only Mode</span>
+              </button>
+            </div>
           </div>
 
-          <div class="news-grid">
-            <div class="news-item-card">
-              <div class="news-meta">
-                <span class="news-source">Bloomberg Markets</span>
-                <span class="news-time">18m ago</span>
-              </div>
-              <h4 class="news-headline">Fed Signals Measured Policy Path as Tech Earnings Beat Wall Street Expectations</h4>
-              <p class="news-snippet">Semiconductor and cloud infrastructure demand remains resilient, driving positive institutional volume momentum across major tech indices.</p>
-              <div class="news-badge-wrap">
-                <span class="news-badge-sentiment bullish">● Bullish Sentiment</span>
-                <span class="news-tag">Macro · Rates</span>
-              </div>
+          <!-- News Filter Toolbar -->
+          <div class="news-toolbar-wrap">
+            <div class="news-search-bar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="news-search-svg"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="news-search-input" class="news-search-input" placeholder="Search news by ticker, macro topic, keyword (e.g. Fed, Nifty, Nvidia, Inflation)..." />
+              <button id="news-search-clear" class="news-search-clear hidden" title="Clear search">✕</button>
             </div>
 
-            <div class="news-item-card">
+            <div class="news-category-pills" id="news-category-pills">
+              <button class="news-cat-pill active" data-cat="all">All Intelligence <span class="cat-count">8</span></button>
+              <button class="news-cat-pill" data-cat="india">🇮🇳 Indian Equities (NSE/BSE)</button>
+              <button class="news-cat-pill" data-cat="us">🇺🇸 US Tech &amp; Megacaps</button>
+              <button class="news-cat-pill" data-cat="macro">🏦 Macro &amp; Central Banks</button>
+              <button class="news-cat-pill" data-cat="quant">⚡ Quant &amp; Volatility</button>
+              <button class="news-cat-pill" data-cat="bullish">🟢 Bullish Momentum</button>
+              <button class="news-cat-pill" data-cat="bearish">🔴 Risk / Bearish</button>
+            </div>
+          </div>
+
+          <!-- News Items Grid -->
+          <div class="news-grid" id="news-grid-container">
+            <!-- Article 1 -->
+            <article class="news-item-card" data-category="macro us bullish" data-tickers="AAPL,MSFT,NVDA,SPY,QQQ" data-id="news-1">
+              <div class="news-meta">
+                <span class="news-source">Bloomberg Terminal</span>
+                <span class="news-time">12m ago</span>
+              </div>
+              <h4 class="news-headline">Fed Signals Steady Rate Trajectory as Megacap AI Capex Continues Accelerating</h4>
+              <p class="news-snippet">Federal Reserve officials reaffirmed data-dependent policy easing while cloud hyperscalers raised forward AI infrastructure capital expenditure projections by 18% year-over-year.</p>
+              <div class="news-bottom-action-row">
+                <div class="news-badge-wrap">
+                  <span class="news-badge-sentiment bullish">● Bullish (+84%)</span>
+                  <span class="news-tag">Macro · AI Capex</span>
+                </div>
+                <button class="news-read-more-btn" data-news-id="1">Full Story →</button>
+              </div>
+            </article>
+
+            <!-- Article 2 -->
+            <article class="news-item-card" data-category="india bullish" data-tickers="RELIANCE,TCS,HDFCBANK,NIFTYBEES" data-id="news-2">
               <div class="news-meta">
                 <span class="news-source">Economic Times</span>
-                <span class="news-time">42m ago</span>
+                <span class="news-time">28m ago</span>
               </div>
-              <h4 class="news-headline">FII Inflows Surge into Indian Equities Led by Banking and Heavy Engineering</h4>
-              <p class="news-snippet">Foreign institutional investors turned net buyers for the third consecutive week, pushing Nifty towards all-time resistance levels.</p>
-              <div class="news-badge-wrap">
-                <span class="news-badge-sentiment bullish">● Bullish Inflow</span>
-                <span class="news-tag">NSE · Banking</span>
+              <h4 class="news-headline">FII Net Inflows Hit 4-Month High in NSE Bluechips; Banking &amp; Energy Lead Accumulation</h4>
+              <p class="news-snippet">Foreign institutional investors injected ₹8,420 Cr into domestic equities over the past 5 sessions, with heavy block deal volume concentrated in HDFC Bank, Reliance, and TCS.</p>
+              <div class="news-bottom-action-row">
+                <div class="news-badge-wrap">
+                  <span class="news-badge-sentiment bullish">● Bullish Flow (+91%)</span>
+                  <span class="news-tag">NSE · Institutional Inflow</span>
+                </div>
+                <button class="news-read-more-btn" data-news-id="2">Full Story →</button>
+              </div>
+            </article>
+
+            <!-- Article 3 -->
+            <article class="news-item-card" data-category="quant macro" data-tickers="SPY,QQQ,NIFTYBEES" data-id="news-3">
+              <div class="news-meta">
+                <span class="news-source">QuantView Research</span>
+                <span class="news-time">45m ago</span>
+              </div>
+              <h4 class="news-headline">ATR Volatility Compression Signals Imminent Directional Expansion in Global Indices</h4>
+              <p class="news-snippet">Average True Range (ATR%) metrics have dropped into the lower 5th historical percentile across 46% of index weights, creating a classic quantitative volatility squeeze pattern.</p>
+              <div class="news-bottom-action-row">
+                <div class="news-badge-wrap">
+                  <span class="news-badge-sentiment neutral">● Volatility Regime</span>
+                  <span class="news-tag">Technical · ATR Squeeze</span>
+                </div>
+                <button class="news-read-more-btn" data-news-id="3">Full Story →</button>
+              </div>
+            </article>
+
+            <!-- Article 4 -->
+            <article class="news-item-card" data-category="us bullish" data-tickers="NVDA,AMD,MSFT" data-id="news-4">
+              <div class="news-meta">
+                <span class="news-source">Reuters Finance</span>
+                <span class="news-time">1h ago</span>
+              </div>
+              <h4 class="news-headline">Semiconductor Order Backlog Reaches Record High as Enterprise LLM Deployment Expands</h4>
+              <p class="news-snippet">Next-generation GPU architectures witness strong lead times through Q4, supporting gross margin guidance and elevated quantitative earnings momentum factors.</p>
+              <div class="news-bottom-action-row">
+                <div class="news-badge-wrap">
+                  <span class="news-badge-sentiment bullish">● High Conviction (+88%)</span>
+                  <span class="news-tag">Semis · Hardware</span>
+                </div>
+                <button class="news-read-more-btn" data-news-id="4">Full Story →</button>
+              </div>
+            </article>
+
+            <!-- Article 5 -->
+            <article class="news-item-card" data-category="india macro" data-tickers="RELIANCE,ONGC,TATAMOTORS" data-id="news-5">
+              <div class="news-meta">
+                <span class="news-source">Mint &amp; RBI Desk</span>
+                <span class="news-time">2h ago</span>
+              </div>
+              <h4 class="news-headline">India Manufacturing PMI Expands to 58.6; Industrial Capex Cycle Hits Decade High</h4>
+              <p class="news-snippet">Core sector growth sustained strong expansion, supported by railway electrification, renewable capacity additions, and resilient consumer discretionary demand.</p>
+              <div class="news-bottom-action-row">
+                <div class="news-badge-wrap">
+                  <span class="news-badge-sentiment bullish">● Macro Strength (+79%)</span>
+                  <span class="news-tag">Macro · India GDP</span>
+                </div>
+                <button class="news-read-more-btn" data-news-id="5">Full Story →</button>
+              </div>
+            </article>
+
+            <!-- Article 6 -->
+            <article class="news-item-card" data-category="macro bearish" data-tickers="GLD,GOLDBEES,SILVERBEES" data-id="news-6">
+              <div class="news-meta">
+                <span class="news-source">Financial Times</span>
+                <span class="news-time">3h ago</span>
+              </div>
+              <h4 class="news-headline">Treasury Yield Curve Steepens as Sovereign Debt Issuance Surpasses Expectations</h4>
+              <p class="news-snippet">Long-end 10-year yields tested key technical resistance levels, prompting tactical multi-asset risk parity funds to temporarily trim high-beta equity duration.</p>
+              <div class="news-bottom-action-row">
+                <div class="news-badge-wrap">
+                  <span class="news-badge-sentiment bearish">● Risk Off Warning (-54%)</span>
+                  <span class="news-tag">Bonds · Yields</span>
+                </div>
+                <button class="news-read-more-btn" data-news-id="6">Full Story →</button>
+              </div>
+            </article>
+
+            <!-- Article 7 -->
+            <article class="news-item-card" data-category="india us quant" data-tickers="TCS,INFY,HCLTECH,WIPRO" data-id="news-7">
+              <div class="news-meta">
+                <span class="news-source">CNBC-TV18</span>
+                <span class="news-time">4h ago</span>
+              </div>
+              <h4 class="news-headline">IT Services Rebound: Deal Total Contract Value (TCV) Up 14% on Cloud Migration Pipelines</h4>
+              <p class="news-snippet">Indian and global IT bellwethers reported renewal rate stabilization, with margin expansion supported by automated code generation and enterprise AI consulting.</p>
+              <div class="news-bottom-action-row">
+                <div class="news-badge-wrap">
+                  <span class="news-badge-sentiment bullish">● Buy Signal (+76%)</span>
+                  <span class="news-tag">IT Sector · TCV</span>
+                </div>
+                <button class="news-read-more-btn" data-news-id="7">Full Story →</button>
+              </div>
+            </article>
+
+            <!-- Article 8 -->
+            <article class="news-item-card" data-category="quant macro" data-tickers="NIFTYBEES,BANKBEES,SPY" data-id="news-8">
+              <div class="news-meta">
+                <span class="news-source">QuantView Signals</span>
+                <span class="news-time">5h ago</span>
+              </div>
+              <h4 class="news-headline">Ensemble Model Cross-Asset Breadth Indicator Reaches Optimal Trend Alignment</h4>
+              <p class="news-snippet">The proprietary QuantView 20-day regime filter confirms a 'Bull Expansion' state with 78% model consensus across LSTM sequential memory and XGBoost boosted trees.</p>
+              <div class="news-bottom-action-row">
+                <div class="news-badge-wrap">
+                  <span class="news-badge-sentiment bullish">● Ensemble Consensus</span>
+                  <span class="news-tag">Quant · Breadth</span>
+                </div>
+                <button class="news-read-more-btn" data-news-id="8">Full Story →</button>
+              </div>
+            </article>
+          </div>
+
+          <!-- Empty State (if search finds nothing) -->
+          <div id="news-no-results" class="news-no-results hidden">
+            <p>No news stories match your active filter or search keywords.</p>
+            <button id="btn-reset-news-filter" class="btn-secondary" style="margin-top: 0.75rem;">Reset Filters</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Full Story Interactive Modal ── -->
+      <div id="news-modal-overlay" class="news-modal-overlay hidden">
+        <div class="news-modal-box glass">
+          <div class="news-modal-header">
+            <div class="news-modal-source-row">
+              <span id="nm-source" class="news-source">Source</span>
+              <span id="nm-time" class="news-time">Timestamp</span>
+              <span id="nm-sentiment" class="news-badge-sentiment bullish">● Bullish</span>
+            </div>
+            <button id="news-modal-close" class="news-modal-close-btn" title="Close">✕</button>
+          </div>
+          <h3 id="nm-headline" class="news-modal-title">Headline</h3>
+          <div class="news-modal-body">
+            <p id="nm-paragraph1" class="nm-text">Full analysis details...</p>
+            <p id="nm-paragraph2" class="nm-text">Institutional context and forecast...</p>
+            
+            <div class="news-modal-quant-box">
+              <div class="nm-quant-title">⚡ QUANTVIEW ALGORITHMIC IMPACT ANALYSIS</div>
+              <div class="nm-quant-grid">
+                <div class="nm-qitem"><span class="nm-qlbl">Factor Sensitivity</span><strong id="nm-factor">Momentum + High Beta</strong></div>
+                <div class="nm-qitem"><span class="nm-qlbl">Expected Volatility Impact</span><strong id="nm-vol">Contraction (Low ATR)</strong></div>
+                <div class="nm-qitem"><span class="nm-qlbl">Ensemble Weight Adjustment</span><strong id="nm-weight">+12% Buy Probability</strong></div>
               </div>
             </div>
 
-            <div class="news-item-card">
-              <div class="news-meta">
-                <span class="news-source">Quant Insights</span>
-                <span class="news-time">1h ago</span>
-              </div>
-              <h4 class="news-headline">Volatility Contraction (ATR% Drop) Sets Up Breakout Patterns Across Large Caps</h4>
-              <p class="news-snippet">Our quantitative filters indicate tight Bollinger band compression across 42% of index constituents, typically preceding strong directional trends.</p>
-              <div class="news-badge-wrap">
-                <span class="news-badge-sentiment neutral">● Volatility Regime</span>
-                <span class="news-tag">Technical · ATR</span>
+            <div class="news-modal-tickers-wrap">
+              <span class="nm-tickers-lbl">Impacted Assets &amp; Quick Analyze:</span>
+              <div id="nm-tickers-list" class="nm-tickers-list">
+                <!-- Ticker buttons inserted dynamically -->
               </div>
             </div>
           </div>
         </div>
-      </section>
+      </div>
 
     </main>
 
