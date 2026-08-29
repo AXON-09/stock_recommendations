@@ -233,8 +233,47 @@ function renderHero(data) {
     kpiRegime.textContent = `Regime: ${data.market_regime.regime || 'Active'}`;
   }
 
-  // Setup three-dot action menu for active ticker
+  // Setup three-dot action menu & Watchlist button for active ticker
   setupHeroActions(data);
+  syncHeroWatchlistButton(data);
+}
+
+function syncHeroWatchlistButton(data) {
+  const wlBtn = document.getElementById('btn-hero-add-watchlist');
+  const wlText = document.getElementById('hero-watchlist-text');
+  if (!wlBtn || !wlText) return;
+
+  const ticker = (data.display_ticker || data.ticker || '').toUpperCase();
+  const inWl = window.WatchlistService ? window.WatchlistService.hasItem(ticker) : false;
+
+  if (inWl) {
+    wlBtn.classList.add('in-watchlist');
+    wlText.textContent = '✓ In Watchlist';
+  } else {
+    wlBtn.classList.remove('in-watchlist');
+    wlText.textContent = '+ Watchlist';
+  }
+
+  wlBtn.onclick = () => {
+    if (!window.WatchlistService) return;
+    const currentlyIn = window.WatchlistService.hasItem(ticker);
+    if (currentlyIn) {
+      window.WatchlistService.removeItem(ticker);
+      wlBtn.classList.remove('in-watchlist');
+      wlText.textContent = '+ Watchlist';
+    } else {
+      window.WatchlistService.addItem({
+        ticker: ticker,
+        name: data.company_name || ticker,
+        price: currency(data.price, data.market?.currency_symbol || '$'),
+        change: '+1.20%',
+        aiRating: data.recommendation ? (data.recommendation.charAt(0).toUpperCase() + data.recommendation.slice(1)) : 'Buy'
+      });
+      wlBtn.classList.add('in-watchlist');
+      wlText.textContent = '✓ In Watchlist';
+    }
+    renderLiveWatchlist();
+  };
 }
 
 function setupHeroActions(data) {
@@ -1612,3 +1651,298 @@ if (document.readyState === 'loading') {
   initWatchlistLogos();
   initNewsPortal();
 }
+
+
+// ── Live Watchlist Table Dynamic Rendering ───────────────────────────────────
+function renderLiveWatchlist() {
+  const tbody = document.getElementById('watchlist-tbody');
+  if (!tbody || !window.WatchlistService) return;
+
+  const items = window.WatchlistService.getWatchlist();
+  tbody.innerHTML = '';
+
+  items.forEach(item => {
+    const tr = document.createElement('tr');
+    tr.className = 'wl-row';
+    tr.dataset.ticker = item.ticker;
+
+    const isIndia = item.ticker.includes('.NS') || ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'ITC', 'NIFTYBEES', 'BANKBEES', 'GOLDBEES'].includes(item.ticker);
+    const isEtf = item.ticker.includes('BEES') || ['SPY', 'QQQ', 'VOO', 'VTI'].includes(item.ticker);
+    const logoSvgUri = window.LogoService ? window.LogoService.getLogo(item.ticker, isIndia, isEtf) : '';
+    const compName = window.LogoService ? window.LogoService.getCompanyName(item.ticker, item.name) : item.name;
+    const ratingClass = (item.aiRating || '').toLowerCase().includes('buy') ? 'rating-buy' : 'rating-hold';
+
+    tr.innerHTML = `
+      <td>
+        <div class="wl-asset-cell">
+          <button class="wl-fav-btn ${item.isFavorite ? 'active' : ''}" data-ticker="${item.ticker}" title="Favorite">⭐</button>
+          <div class="wl-logo-container">
+            <img class="wl-logo-img loaded" src="${logoSvgUri}" alt="" loading="lazy" />
+          </div>
+          <div>
+            <strong>${compName}</strong>
+            <span class="wl-subname">${item.exchange || 'NSE'} · ${item.ticker}</span>
+          </div>
+        </div>
+      </td>
+      <td><span class="wl-exch">${item.exchange || 'NSE'}</span></td>
+      <td class="wl-num">${item.price || '—'}</td>
+      <td><span class="wl-change ${item.changePos !== false ? 'pos' : 'neg'}">${item.change || '+0.00%'}</span></td>
+      <td>${item.volumeRatio || '1.10x'}</td>
+      <td><span class="wl-rating ${ratingClass}">${item.aiRating || 'Buy'}</span></td>
+      <td>
+        <div class="wl-actions-flex">
+          <button class="wl-action-btn qp-btn" data-ticker="${item.ticker}">Analyze →</button>
+          <button class="wl-remove-btn" data-ticker="${item.ticker}" title="Remove from Watchlist">✕</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Attach dynamic remove & favorite listeners
+  tbody.querySelectorAll('.wl-remove-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const t = btn.dataset.ticker;
+      if (t && window.WatchlistService) {
+        window.WatchlistService.removeItem(t);
+        renderLiveWatchlist();
+      }
+    };
+  });
+
+  tbody.querySelectorAll('.wl-fav-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const t = btn.dataset.ticker;
+      if (t && window.WatchlistService) {
+        window.WatchlistService.toggleFavorite(t);
+        renderLiveWatchlist();
+      }
+    };
+  });
+}
+
+// ── Search Autocomplete with Keyboard Navigation ────────────────────────────
+function initSearchAutocomplete() {
+  const input = document.getElementById('ticker-input');
+  const dropdown = document.getElementById('search-autocomplete-dropdown');
+  const resultsContainer = document.getElementById('search-auto-results');
+  if (!input || !dropdown || !resultsContainer) return;
+
+  let activeIndex = -1;
+
+  function renderResults(results) {
+    resultsContainer.innerHTML = '';
+    if (!results || results.length === 0) {
+      dropdown.classList.add('hidden');
+      return;
+    }
+
+    results.forEach((item, idx) => {
+      const row = document.createElement('div');
+      row.className = 'search-auto-row';
+      row.dataset.ticker = item.ticker;
+
+      const isIndia = item.country === 'India';
+      const isEtf = item.type === 'ETF';
+      const logoSvgUri = window.LogoService ? window.LogoService.getLogo(item.ticker, isIndia, isEtf) : '';
+
+      row.innerHTML = `
+        <div class="sa-left">
+          <div class="sa-logo-wrap"><img src="${logoSvgUri}" class="sa-logo-img" alt="" /></div>
+          <div>
+            <div class="sa-title"><strong>${item.ticker}</strong> <span class="sa-name">${item.name}</span></div>
+            <div class="sa-sub">${item.country === 'India' ? '🇮🇳 India' : '🇺🇸 United States'} · ${item.exchange} · <span class="sa-type-badge">${item.type}</span></div>
+          </div>
+        </div>
+        <div class="sa-right"><span class="sa-arrow">→</span></div>
+      `;
+
+      row.onclick = () => {
+        input.value = item.ticker;
+        dropdown.classList.add('hidden');
+        if (window.SearchService) window.SearchService.addRecentSearch(item.ticker);
+        analyze(item.ticker);
+      };
+
+      resultsContainer.appendChild(row);
+    });
+
+    dropdown.classList.remove('hidden');
+    activeIndex = -1;
+  }
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    if (!q) {
+      dropdown.classList.add('hidden');
+      return;
+    }
+    if (window.SearchService) {
+      const matches = window.SearchService.search(q);
+      renderResults(matches);
+    }
+  });
+
+  input.addEventListener('keydown', (e) => {
+    const rows = resultsContainer.querySelectorAll('.search-auto-row');
+    if (rows.length === 0 || dropdown.classList.contains('hidden')) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = (activeIndex + 1) % rows.length;
+      updateHighlight(rows);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = (activeIndex - 1 + rows.length) % rows.length;
+      updateHighlight(rows);
+    } else if (e.key === 'Enter' && activeIndex >= 0 && activeIndex < rows.length) {
+      e.preventDefault();
+      rows[activeIndex].click();
+    } else if (e.key === 'Escape') {
+      dropdown.classList.add('hidden');
+    }
+  });
+
+  function updateHighlight(rows) {
+    rows.forEach((r, idx) => {
+      r.classList.toggle('highlighted', idx === activeIndex);
+      if (idx === activeIndex) r.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.classList.add('hidden');
+    }
+  });
+}
+
+// ── Notification Center ─────────────────────────────────────────────────────
+function initNotificationCenter() {
+  const btnNotif = document.getElementById('btn-notifications');
+  const dropdown = document.getElementById('notifications-dropdown');
+  const countBadge = document.getElementById('notif-count-badge');
+  const pingDot = document.getElementById('notif-ping-dot');
+  const unreadText = document.getElementById('notif-unread-text');
+  const notifList = document.getElementById('notif-list-container');
+  const markReadBtn = document.getElementById('btn-notif-mark-read');
+  const clearBtn = document.getElementById('btn-notif-clear');
+
+  if (!btnNotif || !dropdown) return;
+
+  function updateNotifUI() {
+    if (!window.NotificationService || !notifList) return;
+    const items = window.NotificationService.getNotifications();
+    const unread = window.NotificationService.getUnreadCount();
+
+    if (countBadge) {
+      countBadge.textContent = unread;
+      countBadge.classList.toggle('hidden', unread === 0);
+    }
+    if (pingDot) {
+      pingDot.classList.toggle('hidden', unread === 0);
+    }
+    if (unreadText) {
+      unreadText.textContent = `${unread} Unread`;
+    }
+
+    notifList.innerHTML = '';
+    if (items.length === 0) {
+      notifList.innerHTML = '<div class="notif-empty">No alerts or notifications</div>';
+      return;
+    }
+
+    items.forEach(item => {
+      const el = document.createElement('div');
+      el.className = `notif-item ${item.isRead ? 'read' : 'unread'}`;
+      el.innerHTML = `
+        <div class="notif-item-top">
+          <span class="notif-type-tag ${item.type}">${item.type.replace('_', ' ').toUpperCase()}</span>
+          <span class="notif-time">${item.timestamp}</span>
+        </div>
+        <h5 class="notif-item-title">${item.title}</h5>
+        <p class="notif-item-msg">${item.message}</p>
+        ${item.ticker ? `<button class="notif-action-analyze qp-btn" data-ticker="${item.ticker}">Analyze ${item.ticker} →</button>` : ''}
+      `;
+      notifList.appendChild(el);
+    });
+  }
+
+  btnNotif.onclick = (e) => {
+    e.stopPropagation();
+    dropdown.classList.toggle('hidden');
+    updateNotifUI();
+  };
+
+  if (markReadBtn) {
+    markReadBtn.onclick = () => {
+      if (window.NotificationService) {
+        window.NotificationService.markAllAsRead();
+        updateNotifUI();
+      }
+    };
+  }
+
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      if (window.NotificationService) {
+        window.NotificationService.clearAll();
+        updateNotifUI();
+      }
+    };
+  }
+
+  document.addEventListener('click', (e) => {
+    if (dropdown && !dropdown.contains(e.target) && (!btnNotif || !btnNotif.contains(e.target))) {
+      dropdown.classList.add('hidden');
+    }
+  });
+
+  updateNotifUI();
+}
+
+// ── Settings Modal ──────────────────────────────────────────────────────────
+function initSettingsModal() {
+  const navSettings = document.getElementById('nav-link-settings');
+  const modal = document.getElementById('settings-modal-overlay');
+  const closeBtn = document.getElementById('settings-modal-close');
+  const saveBtn = document.getElementById('btn-save-settings');
+
+  if (!modal) return;
+
+  if (navSettings) {
+    navSettings.onclick = (e) => {
+      e.preventDefault();
+      modal.classList.remove('hidden');
+    };
+  }
+
+  if (closeBtn) {
+    closeBtn.onclick = () => modal.classList.add('hidden');
+  }
+
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.classList.add('hidden');
+  };
+
+  if (saveBtn) {
+    saveBtn.onclick = () => {
+      saveBtn.textContent = '✓ Saved Successfully';
+      setTimeout(() => {
+        saveBtn.textContent = 'Save Settings';
+        modal.classList.add('hidden');
+      }, 800);
+    };
+  }
+}
+
+// Re-hook DOM load for full platform suite
+document.addEventListener('DOMContentLoaded', () => {
+  renderLiveWatchlist();
+  initSearchAutocomplete();
+  initNotificationCenter();
+  initSettingsModal();
+});

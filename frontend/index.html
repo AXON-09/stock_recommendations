@@ -61,6 +61,10 @@
 
     <div class="sidebar-menu-group sidebar-bottom-group">
       <div class="sidebar-label">System</div>
+      <a href="#settings" id="nav-link-settings" class="sidebar-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        <span>Settings</span>
+      </a>
       <a href="/docs" target="_blank" class="sidebar-link">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
         <span>FastAPI Docs</span>
@@ -100,9 +104,27 @@
           <span class="shortcut-key">K</span>
           <span class="shortcut-label">Search</span>
         </div>
-        <div class="nav-action-btn" title="System Notifications">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-svg"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-          <span class="notification-ping"></span>
+        <div class="notification-wrap">
+          <button id="btn-notifications" class="nav-action-btn" title="System Notifications" aria-label="Notifications">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-svg"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            <span class="notification-ping" id="notif-ping-dot"></span>
+            <span class="notif-badge-count" id="notif-count-badge">3</span>
+          </button>
+          <div id="notifications-dropdown" class="notifications-dropdown hidden">
+            <div class="notif-dropdown-header">
+              <div class="notif-header-title">
+                <span>Alerts &amp; Intelligence</span>
+                <span class="notif-unread-tag" id="notif-unread-text">3 Unread</span>
+              </div>
+              <div class="notif-header-actions">
+                <button id="btn-notif-mark-read" class="notif-btn-action">Mark all read</button>
+                <button id="btn-notif-clear" class="notif-btn-action">Clear</button>
+              </div>
+            </div>
+            <div class="notif-list" id="notif-list-container">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
         </div>
         <div class="user-profile-pill">
           <div class="avatar-circle">Q</div>
@@ -340,7 +362,12 @@
             <div class="hero-left">
               <div class="hero-top-title-row">
                 <h1 id="res-company-name" class="hero-company-name">—</h1>
-                <!-- Optional three-dot action menu -->
+                <div class="hero-actions-cluster">
+                  <button id="btn-hero-add-watchlist" class="btn-hero-watchlist" title="Add to Live Watchlist">
+                    <span class="wl-star-icon">⭐</span>
+                    <span id="hero-watchlist-text">+ Watchlist</span>
+                  </button>
+                  <!-- Three-dot action menu -->
                 <div class="hero-menu-wrap">
                   <button id="hero-three-dots-btn" class="hero-three-dots-btn" title="Stock Actions" aria-label="Stock Actions">
                     <svg viewBox="0 0 24 24" fill="currentColor" class="three-dots-svg"><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="19" r="2"></circle></svg>
@@ -1016,6 +1043,62 @@
 
     </main>
 
+    
+<!-- ── Settings Modal ── -->
+<div id="settings-modal-overlay" class="news-modal-overlay hidden">
+  <div class="news-modal-box glass settings-modal-box">
+    <div class="news-modal-header">
+      <div class="news-modal-source-row">
+        <span class="settings-modal-badge">⚙️ PLATFORM PREFERENCES</span>
+      </div>
+      <button id="settings-modal-close" class="news-modal-close-btn" title="Close">✕</button>
+    </div>
+    <h3 class="news-modal-title">QuantView AI Configuration</h3>
+    
+    <div class="settings-form">
+      <div class="settings-group">
+        <label class="settings-label">Default Currency &amp; Format</label>
+        <select id="setting-currency" class="settings-select">
+          <option value="auto">Auto-detect from Market (₹ INR for India / $ USD for US)</option>
+          <option value="INR">Force ₹ Indian Rupee (INR)</option>
+          <option value="USD">Force $ US Dollar (USD)</option>
+        </select>
+      </div>
+
+      <div class="settings-group">
+        <label class="settings-label">Forecast Horizon</label>
+        <select id="setting-horizon" class="settings-select">
+          <option value="20">~20 Trading Sessions (Standard Swing / 1 Month)</option>
+          <option value="60">~60 Trading Sessions (Quarterly Position / 3 Months)</option>
+        </select>
+      </div>
+
+      <div class="settings-group">
+        <label class="settings-label">Marketaux News API Key (Optional custom key)</label>
+        <input type="text" id="setting-marketaux-key" class="settings-input" placeholder="Paste Marketaux API token..." />
+        <span class="settings-hint">Leave blank to use QuantView Institutional Live News Feed</span>
+      </div>
+
+      <div class="settings-group">
+        <label class="settings-label">Finnhub / FMP API Key (Optional custom key)</label>
+        <input type="text" id="setting-finnhub-key" class="settings-input" placeholder="Paste Finnhub / FMP API token..." />
+      </div>
+
+      <div class="settings-toggle-row">
+        <div>
+          <strong>Live WebSocket Price Flashes</strong>
+          <p class="settings-hint">Simulate real-time tick pulse on active cards</p>
+        </div>
+        <input type="checkbox" id="setting-live-pulse" checked />
+      </div>
+
+      <div class="settings-btn-row">
+        <button id="btn-save-settings" class="btn-analyze" style="padding: 0.65rem 1.5rem;">Save Settings</button>
+      </div>
+    </div>
+  </div>
+</div>
+
     <!-- ─────────────────── FOOTER ─────────────────── -->
     <footer class="site-footer">
       <div class="footer-inner">
@@ -1062,6 +1145,11 @@
 <script src="glossary.js"></script>
 <script src="infobox.js"></script>
 <script src="logos.js"></script>
+<script src="services/logoService.js"></script>
+<script src="services/marketauxService.js"></script>
+<script src="services/watchlistService.js"></script>
+<script src="services/notificationService.js"></script>
+<script src="services/searchService.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
