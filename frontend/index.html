@@ -270,17 +270,17 @@
           <div class="loading-spinner-ring">
             <div class="spinner-ring-inner"></div>
           </div>
-          <h3 class="loading-title">Executing Deep ML &amp; Quant Pipeline</h3>
+          <h3 class="loading-title" id="loading-title">Analyzing Asset Pipeline</h3>
           <p id="loading-timer" class="loading-timer">Elapsed: 0s</p>
           <div class="loading-steps">
-            <div id="ls-fetch"      class="ls-row"><span class="ls-dot"></span>Fetching historical market data</div>
-            <div id="ls-indicators" class="ls-row"><span class="ls-dot"></span>Computing technical indicators &amp; Wilder ATR</div>
+            <div id="ls-fetch"      class="ls-row"><span class="ls-dot"></span>Downloading market data</div>
+            <div id="ls-indicators" class="ls-row"><span class="ls-dot"></span>Engineering features &amp; indicators</div>
             <div id="ls-regime"     class="ls-row"><span class="ls-dot"></span>Classifying market regime &amp; volatility</div>
-            <div id="ls-backtest"   class="ls-row"><span class="ls-dot"></span>Simulating 3-fold Walk-Forward validation</div>
-            <div id="ls-train"      class="ls-row"><span class="ls-dot"></span>Fitting XGBoost &amp; PyTorch LSTM models</div>
-            <div id="ls-predict"    class="ls-row"><span class="ls-dot"></span>Calculating SHAP Shapley feature contributions</div>
+            <div id="ls-backtest"   class="ls-row"><span class="ls-dot"></span>3-Fold Purged Walk-Forward validation</div>
+            <div id="ls-train"      class="ls-row"><span class="ls-dot"></span>Generating ensemble prediction</div>
+            <div id="ls-predict"    class="ls-row"><span class="ls-dot"></span>Calculating SHAP explanation &amp; preparing results</div>
           </div>
-          <p class="loading-note">Cold runs take ~7-9s for full 5-year multi-model validation. Subsequent searches resolve in &lt;50ms.</p>
+          <p class="loading-note">First analysis may take longer (~5-10s for full multi-model walk-forward). Cached queries resolve in &lt;50ms.</p>
         </div>
       </section>
 

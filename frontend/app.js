@@ -131,36 +131,104 @@ function gaugeColor(score) {
   return 'hsl(348 100% 65%)';
 }
 
+// =============================================================================
+// QuantView AI — Animation & Micro-Interaction Utilities
+// =============================================================================
+const _prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * Animate numeric values smoothly from startVal to endVal using ease-out cubic.
+ * Guaranteed to end strictly at endVal formatted by formatter.
+ */
+function animateNumber(element, startVal, endVal, duration = 850, formatter = (v) => v.toFixed(2)) {
+  if (!element || endVal === null || endVal === undefined || isNaN(endVal)) return;
+  if (_prefersReducedMotion || duration <= 0) {
+    element.textContent = formatter(endVal);
+    return;
+  }
+
+  const sVal = (startVal !== null && startVal !== undefined && !isNaN(startVal)) ? startVal : 0;
+  const startTime = performance.now();
+  const diff = endVal - sVal;
+
+  function update(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(1, elapsed / duration);
+    // Ease-out cubic: 1 - (1 - t)^3
+    const ease = 1 - Math.pow(1 - progress, 3);
+    const current = sVal + diff * ease;
+
+    element.textContent = formatter(current);
+
+    if (progress < 1) {
+      requestAnimationFrame(update);
+    } else {
+      element.textContent = formatter(endVal);
+    }
+  }
+
+  requestAnimationFrame(update);
+}
+
+/**
+ * Stagger the reveal of result cards upon receiving new analysis data.
+ */
+function staggerRevealCards(container) {
+  if (!container || _prefersReducedMotion) return;
+  const cards = container.querySelectorAll('.card, .kpi-grid, .hero-card');
+  cards.forEach((card, index) => {
+    card.classList.remove('qv-card-reveal');
+    card.style.animationDelay = `${Math.min(index * 45, 400)}ms`;
+    void card.offsetWidth; // force reflow
+    card.classList.add('qv-card-reveal');
+  });
+}
+
 // ── Loading step animator ─────────────────────────────────────────────────────
 const STEP_ORDER = ['fetch', 'indicators', 'regime', 'backtest', 'train', 'predict'];
 let _stepIdx = 0;
 
-function startLoadingSteps() {
+function startLoadingSteps(ticker = '') {
   _stepIdx = 0;
-  Object.values(loadingSteps).forEach(el => el.classList.remove('active', 'done'));
-  loadingSteps[STEP_ORDER[0]].classList.add('active');
+  const titleEl = document.getElementById('loading-title');
+  if (titleEl) {
+    const tClean = (ticker || 'Asset').toUpperCase();
+    titleEl.textContent = `Analyzing ${tClean} Pipeline`;
+  }
+
+  Object.values(loadingSteps).forEach(el => {
+    if (el) el.classList.remove('active', 'done');
+  });
+  if (loadingSteps[STEP_ORDER[0]]) {
+    loadingSteps[STEP_ORDER[0]].classList.add('active');
+  }
 
   _stepInterval = setInterval(() => {
-    if (_stepIdx < STEP_ORDER.length) {
+    if (_stepIdx < STEP_ORDER.length && loadingSteps[STEP_ORDER[_stepIdx]]) {
       loadingSteps[STEP_ORDER[_stepIdx]].classList.remove('active');
       loadingSteps[STEP_ORDER[_stepIdx]].classList.add('done');
     }
     _stepIdx++;
-    if (_stepIdx < STEP_ORDER.length) {
+    if (_stepIdx < STEP_ORDER.length && loadingSteps[STEP_ORDER[_stepIdx]]) {
       loadingSteps[STEP_ORDER[_stepIdx]].classList.add('active');
     } else {
       clearInterval(_stepInterval);
     }
-  }, 15000);  // visual pacing, not tied to actual progress
+  }, 1600); // 1.6s visual progression for active stages
 }
 
 function stopLoadingSteps() {
-  clearInterval(_stepInterval);
-  Object.values(loadingSteps).forEach(el => el.classList.add('done'));
+  if (_stepInterval) {
+    clearInterval(_stepInterval);
+    _stepInterval = null;
+  }
+  Object.values(loadingSteps).forEach(el => {
+    if (el) el.classList.add('done');
+  });
 }
 
 // ── UI state helpers ──────────────────────────────────────────────────────────
-function showLoading() {
+function showLoading(ticker = '') {
   if (_timerInterval) {
     clearInterval(_timerInterval);
     _timerInterval = null;
@@ -183,7 +251,7 @@ function showLoading() {
     loadingTimer.textContent = `Elapsed: ${secs}s`;
   }, 1000);
 
-  startLoadingSteps();
+  startLoadingSteps(ticker);
 }
 
 function hideLoading() {
@@ -209,6 +277,7 @@ function showResult() {
   updateAnalysisNavVisibility(true);
   errorState.classList.add('hidden');
   resultPanel.classList.remove('hidden');
+  staggerRevealCards(resultPanel);
   resultPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   setActiveSidebarLink('nav-link-dash');
 }
@@ -594,14 +663,17 @@ function renderHero(data) {
     }
   }
 
-  // Price — currency-aware
-  document.getElementById('res-price').textContent = currency(data.price, sym);
+  // Price — currency-aware animation
+  const resPriceEl = document.getElementById('res-price');
+  if (resPriceEl) {
+    animateNumber(resPriceEl, 0, data.price, 700, v => currency(v, sym));
+  }
 
-  // Recommendation badge
+  // Recommendation badge with reveal animation
   const recBadge = document.getElementById('rec-badge');
   const rec = data.recommendation;
   recBadge.textContent = rec.toUpperCase();
-  recBadge.className   = `rec-badge ${rec.toLowerCase()}`;
+  recBadge.className   = `rec-badge ${rec.toLowerCase()} qv-rec-reveal`;
 
   document.getElementById('res-prob').textContent = pct(data.probability);
 
@@ -609,15 +681,15 @@ function renderHero(data) {
   const kpiRec = document.getElementById('kpi-rec-val');
   if (kpiRec) {
     kpiRec.textContent = rec.toUpperCase();
-    kpiRec.className = `kpi-val ${rec.toLowerCase()}`;
+    kpiRec.className = `kpi-val ${rec.toLowerCase()} qv-rec-reveal`;
   }
   const kpiProb = document.getElementById('kpi-prob-val');
   if (kpiProb) {
-    kpiProb.textContent = pct(data.probability);
+    animateNumber(kpiProb, 0, data.probability * 100, 750, v => `${Math.round(v)}%`);
   }
   const kpiConf = document.getElementById('kpi-conf-val');
   if (kpiConf && data.confidence) {
-    kpiConf.textContent = `${data.confidence.score}/100`;
+    animateNumber(kpiConf, 0, data.confidence.score, 850, v => `${Math.round(v)}/100`);
   }
   const kpiRegime = document.getElementById('kpi-regime-sub');
   if (kpiRegime && data.market_regime) {
@@ -723,19 +795,32 @@ function renderConfidence(data) {
 
   // Gauge arc
   const fill = document.getElementById('gauge-fill');
-  fill.style.strokeDasharray = arcDashArray(score / 100);
-  fill.style.stroke          = gaugeColor(score);
+  if (fill) {
+    fill.style.strokeDasharray = arcDashArray(score / 100);
+    fill.style.stroke          = gaugeColor(score);
+  }
 
-  document.getElementById('gauge-val').textContent = `${score}`;
-  document.getElementById('gauge-val').style.color = gaugeColor(score);
+  const gaugeValEl = document.getElementById('gauge-val');
+  if (gaugeValEl) {
+    animateNumber(gaugeValEl, 0, score, 850, v => `${Math.round(v)}`);
+    gaugeValEl.style.color = gaugeColor(score);
+  }
   document.getElementById('gauge-lbl').textContent = c.label;
 
   const comps = c.components;
 
   function setBar(barId, pctId, val) {
     const pv = val != null ? Math.round(val * 100) : null;
-    document.getElementById(barId).style.width = pv != null ? `${pv}%` : '0%';
-    document.getElementById(pctId).textContent = pv != null ? `${pv}%` : 'N/A';
+    const barEl = document.getElementById(barId);
+    const pctEl = document.getElementById(pctId);
+    if (barEl) barEl.style.width = pv != null ? `${pv}%` : '0%';
+    if (pctEl) {
+      if (pv != null) {
+        animateNumber(pctEl, 0, pv, 800, v => `${Math.round(v)}%`);
+      } else {
+        pctEl.textContent = 'N/A';
+      }
+    }
   }
 
   setBar('cc-prob',   'cc-prob-pct',   comps.probability_strength);
@@ -746,8 +831,11 @@ function renderConfidence(data) {
 
   // Note when agreement is excluded
   if (c.lstm_excluded_from_agreement) {
-    document.getElementById('cc-agree-pct').textContent = 'Excl.';
-    document.getElementById('cc-agree-pct').title = 'LSTM unavailable — model agreement component excluded and weights renormalised';
+    const agreeEl = document.getElementById('cc-agree-pct');
+    if (agreeEl) {
+      agreeEl.textContent = 'Excl.';
+      agreeEl.title = 'LSTM unavailable — model agreement component excluded and weights renormalised';
+    }
   }
 }
 
@@ -860,14 +948,22 @@ function renderRegime(data) {
     'trending_down': 'Trending Down ↓',
     'choppy':        'Choppy ⟷',
   };
-  badge.textContent = regLabel[r.name] || r.name;
-  badge.className   = `regime-badge r-${r.name.replace(/_/g, '-')}`;
+  if (badge) {
+    badge.textContent = regLabel[r.name] || r.name;
+    badge.className   = `regime-badge r-${r.name.replace(/_/g, '-')}`;
+    badge.classList.remove('regime-pulse-once');
+    void badge.offsetWidth;
+    badge.classList.add('regime-pulse-once');
+  }
 
   const clarityPct = Math.round((r.clarity ?? 0) * 100);
-  document.getElementById('rs-bar').style.width = `${clarityPct}%`;
-  document.getElementById('rs-pct').textContent = `${clarityPct}%`;
+  const rsBar = document.getElementById('rs-bar');
+  const rsPct = document.getElementById('rs-pct');
+  if (rsBar) rsBar.style.width = `${clarityPct}%`;
+  if (rsPct) animateNumber(rsPct, 0, clarityPct, 750, v => `${Math.round(v)}%`);
 
-  document.getElementById('stat-adx').textContent   = num(r.adx);
+  const adxEl = document.getElementById('stat-adx');
+  if (adxEl && r.adx != null) animateNumber(adxEl, 0, r.adx, 750, v => num(v));
   document.getElementById('stat-di').textContent    = `${num(r.adx_pos)} / ${num(r.adx_neg)}`;
   document.getElementById('stat-slope').textContent = r.sma200_slope != null
     ? `${r.sma200_slope > 0 ? '+' : ''}${(r.sma200_slope * 100).toFixed(3)}%`
@@ -880,10 +976,19 @@ function renderVolatility(data) {
   const v   = data.volatility;
   const sym = data.market.currency_symbol || '$';
 
-  document.getElementById('stat-annvol').textContent  = pct(v.annualized);
-  document.getElementById('stat-atr').textContent     = currency(v.atr, sym, 3);
+  const annVolEl = document.getElementById('stat-annvol');
+  if (annVolEl && v.annualized != null) {
+    animateNumber(annVolEl, 0, v.annualized * 100, 750, val => `${val.toFixed(1)}%`);
+  }
+  const atrEl = document.getElementById('stat-atr');
+  if (atrEl && v.atr != null) {
+    animateNumber(atrEl, 0, v.atr, 750, val => currency(val, sym, 3));
+  }
   document.getElementById('stat-atr-pct').textContent = `${num(v.atr_percent, 3)}%`;
-  document.getElementById('stat-rsi').textContent     = num(v.rsi);
+  const rsiEl = document.getElementById('stat-rsi');
+  if (rsiEl && v.rsi != null) {
+    animateNumber(rsiEl, 0, v.rsi, 750, val => num(val));
+  }
   document.getElementById('stat-rsi-buy').textContent  = num(v.rsi_buy_threshold, 1);
   document.getElementById('stat-rsi-sell').textContent = num(v.rsi_sell_threshold, 1);
 }
@@ -906,8 +1011,16 @@ function renderValuation(data) {
     return;
   }
 
-  peEl.textContent  = val.pe_ratio  != null ? num(val.pe_ratio,  1) : 'Not Available';
-  speEl.textContent = val.peer_pe   != null ? num(val.peer_pe,   1) : 'Not Available';
+  if (val.pe_ratio != null && peEl) {
+    animateNumber(peEl, 0, val.pe_ratio, 750, v => num(v, 1));
+  } else {
+    peEl.textContent = 'Not Available';
+  }
+  if (val.peer_pe != null && speEl) {
+    animateNumber(speEl, 0, val.peer_pe, 750, v => num(v, 1));
+  } else {
+    speEl.textContent = 'Not Available';
+  }
   peEl.style.color = speEl.style.color = 'var(--text-1)';
 
   if (val.pe_relative_pct != null) {
@@ -1019,12 +1132,13 @@ function renderExplanation(data) {
       return;
     }
 
-    items.forEach(item => {
+    items.forEach((item, idx) => {
       const barPct = Math.min(100, Math.round((Math.abs(item.shap_value) / maxAbs) * 100));
       const sign = item.shap_value > 0 ? '+' : '';
       const infoKey = FEAT_INFO_MAP[item.feature] || item.feature;
       const row = document.createElement('div');
-      row.className = 'shap-item';
+      row.className = 'shap-item qv-card-reveal';
+      row.style.animationDelay = `${Math.min(idx * 60, 350)}ms`;
       row.innerHTML = `
         <div class="shap-item-top">
           <span class="shap-feat-name">${item.display_name} <button class="info-btn" data-info="${infoKey}" aria-label="What is ${item.display_name}?">ⓘ</button></span>
@@ -1399,6 +1513,12 @@ function initGrowwPointerEvents() {
       document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       _activeTimeframe = btn.dataset.tf;
+      const svgStage = document.getElementById('groww-chart-stage');
+      if (svgStage) {
+        svgStage.classList.remove('chart-stage-crossfade');
+        void svgStage.offsetWidth;
+        svgStage.classList.add('chart-stage-crossfade');
+      }
       drawGrowwStockChart();
     });
   });
@@ -1619,7 +1739,7 @@ function renderAll(data) {
 async function analyze(ticker) {
   if (!ticker) return;
   _lastTicker = ticker;
-  showLoading();
+  showLoading(ticker);
 
   try {
     const url  = `${API_BASE}/api/recommend?ticker=${encodeURIComponent(ticker)}`;
@@ -2349,6 +2469,7 @@ function initSettingsModal() {
 
 // Re-hook DOM load for full platform suite
 function initPlatform() {
+  document.body.classList.add('qv-loaded');
   renderLiveWatchlist();
   initNewsPortal();
   initSidebarNavigation();
