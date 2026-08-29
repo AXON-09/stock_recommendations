@@ -204,6 +204,25 @@ function renderHero(data) {
 
   document.getElementById('res-prob').textContent = pct(data.probability);
 
+  // Top KPI summary card updates
+  const kpiRec = document.getElementById('kpi-rec-val');
+  if (kpiRec) {
+    kpiRec.textContent = rec.toUpperCase();
+    kpiRec.className = `kpi-val ${rec.toLowerCase()}`;
+  }
+  const kpiProb = document.getElementById('kpi-prob-val');
+  if (kpiProb) {
+    kpiProb.textContent = pct(data.probability);
+  }
+  const kpiConf = document.getElementById('kpi-conf-val');
+  if (kpiConf && data.confidence) {
+    kpiConf.textContent = `${data.confidence.score}/100`;
+  }
+  const kpiRegime = document.getElementById('kpi-regime-sub');
+  if (kpiRegime && data.market_regime) {
+    kpiRegime.textContent = `Regime: ${data.market_regime.regime || 'Active'}`;
+  }
+
   // Cache note
   const cache = data.cache;
   const cacheEl = document.getElementById('cache-note');
@@ -212,6 +231,7 @@ function renderHero(data) {
       ? `Cached · trained ${cache.trained_at ? new Date(cache.trained_at).toLocaleTimeString() : '—'} · data through ${cache.data_through || '—'}`
       : `Fresh · data through ${cache.data_through || '—'}`;
   }
+
 }
 
 function renderConfidence(data) {
@@ -1152,14 +1172,40 @@ tickerInput.addEventListener('keydown', e => {
   }
 });
 
-document.querySelectorAll('.qp-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
+// Global delegated listener for quick-pick buttons (including watchlist and ticker buttons)
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.qp-btn');
+  if (btn && btn.dataset.ticker) {
     const t = btn.dataset.ticker;
     tickerInput.value = t;
     analyze(t);
-  });
+    // Smooth scroll to results
+    const results = document.getElementById('result-panel');
+    if (results && !results.classList.contains('hidden')) {
+      results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
 });
+
+// Shortcut key (Ctrl+K / Cmd+K) to focus search
+window.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    tickerInput.focus();
+    tickerInput.select();
+  }
+});
+
+// Mobile Sidebar toggle
+const sidebarToggleBtn = document.getElementById('sidebar-toggle');
+const sidebarEl = document.getElementById('app-sidebar');
+if (sidebarToggleBtn && sidebarEl) {
+  sidebarToggleBtn.addEventListener('click', () => {
+    sidebarEl.classList.toggle('open');
+  });
+}
 
 errorRetry.addEventListener('click', () => {
   if (_lastTicker) analyze(_lastTicker);
 });
+
