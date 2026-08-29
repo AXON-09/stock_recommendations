@@ -528,7 +528,8 @@ class StockRecommender:
         self.calibrator.fit(oof_stack, all_y)
 
         ens_prob = self.calibrator.predict_proba(oof_stack)[:, 1]
-        ens_pred = (ens_prob >= cfg.BUY_THRESHOLD).astype(int)
+        ens_pred = (ens_prob >= 0.50).astype(int)
+
 
         # Guard against all-same labels (prevents AUC error)
         try:
