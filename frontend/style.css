@@ -283,7 +283,7 @@ body {
 .glass-navbar {
   height: 64px;
   background: rgba(11, 17, 32, 0.8);
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   position: sticky;
