@@ -631,6 +631,106 @@
           </div>
         </div>
 
+        
+        <!-- Institutional & Fundamental Intelligence (6-Card Grid) -->
+        <div class="card glass institutional-card" id="institutional-section">
+          <div class="card-header-flex">
+            <div>
+              <h2 class="card-title">INSTITUTIONAL &amp; FUNDAMENTAL INTELLIGENCE <button class="info-btn" data-info="institutional_intelligence" aria-label="What is Institutional Intelligence?">ⓘ</button></h2>
+              <span class="card-subtag">Analyst Consensus · Revenue Forecast · Valuation · Margins</span>
+            </div>
+          </div>
+          <div class="inst-cards-grid">
+            <!-- Card 1: Analyst Consensus -->
+            <div class="inst-mini-card">
+              <div class="inst-card-header">
+                <span class="inst-title">Analyst</span>
+                <span class="inst-arrow">›</span>
+              </div>
+              <div class="inst-main-row">
+                <span class="inst-val-highlight green" id="inst-analyst-rating">Buy</span>
+                <div class="inst-gauge-wrap">
+                  <svg viewBox="0 0 54 28" class="inst-gauge-svg">
+                    <path d="M 4 25 A 23 23 0 0 1 50 25" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="4" stroke-linecap="round"/>
+                    <path id="inst-gauge-path" d="M 4 25 A 23 23 0 0 1 50 25" fill="none" stroke="#10b981" stroke-width="4" stroke-linecap="round" stroke-dasharray="72.2" stroke-dashoffset="18"/>
+                    <circle cx="27" cy="25" r="2.5" fill="#ffffff"/>
+                    <line id="inst-gauge-needle" x1="27" y1="25" x2="38" y2="10" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="inst-sub-text" id="inst-analyst-count">41 analysts</div>
+            </div>
+
+            <!-- Card 2: Analyst Target Price -->
+            <div class="inst-mini-card">
+              <div class="inst-card-header">
+                <span class="inst-title">Analyst</span>
+                <span class="inst-arrow">›</span>
+              </div>
+              <div class="inst-sub-label">Target Price</div>
+              <div class="inst-main-row">
+                <span class="inst-val-bold" id="inst-target-price">2460.05 <span class="inst-curr" id="inst-target-curr">INR</span></span>
+              </div>
+              <div class="inst-sub-text" id="inst-target-analysts">41 analysts</div>
+            </div>
+
+            <!-- Card 3: Earnings Revenue Forecast -->
+            <div class="inst-mini-card">
+              <div class="inst-card-header">
+                <span class="inst-title">Earnings</span>
+                <span class="inst-arrow">›</span>
+              </div>
+              <div class="inst-sub-label">Revenue Forecast</div>
+              <div class="inst-main-row">
+                <span class="inst-val-direction" id="inst-rev-forecast">
+                  <span class="inst-arrow-icon" id="inst-rev-arrow">↘</span>
+                  <span id="inst-rev-label" class="red">Down</span>
+                </span>
+              </div>
+              <div class="inst-sub-text">Next quarter</div>
+            </div>
+
+            <!-- Card 4: Financials & Valuation -->
+            <div class="inst-mini-card">
+              <div class="inst-card-header">
+                <span class="inst-title">Financials</span>
+                <span class="inst-arrow">›</span>
+              </div>
+              <div class="inst-sub-label">Valuation</div>
+              <div class="inst-main-row">
+                <span class="inst-val-badge green" id="inst-ps-badge">Low <span class="inst-subtag-pill">P/S</span></span>
+              </div>
+              <div class="inst-sub-bold" id="inst-ps-val">3.07 x</div>
+            </div>
+
+            <!-- Card 5: Trading & Volume -->
+            <div class="inst-mini-card">
+              <div class="inst-card-header">
+                <span class="inst-title">Trading</span>
+                <span class="inst-arrow">›</span>
+              </div>
+              <div class="inst-sub-label">Volume</div>
+              <div class="inst-main-row">
+                <span class="inst-val-badge green" id="inst-vol-badge">High</span>
+              </div>
+              <div class="inst-sub-bold" id="inst-vol-val">1.87 x</div>
+            </div>
+
+            <!-- Card 6: Profitability & Margins -->
+            <div class="inst-mini-card">
+              <div class="inst-card-header">
+                <span class="inst-title">Profitability</span>
+                <span class="inst-arrow">›</span>
+              </div>
+              <div class="inst-sub-label">Valuation</div>
+              <div class="inst-main-row">
+                <span class="inst-val-badge green" id="inst-prof-badge">High <span class="inst-subtag-pill">Gross Margin</span></span>
+              </div>
+              <div class="inst-sub-bold" id="inst-prof-val">98.35 %</div>
+            </div>
+          </div>
+        </div>
+
         <!-- Strategy Benchmark Comparison -->
         <div class="card glass" id="benchmark-card">
           <div class="card-header-flex">
@@ -707,6 +807,34 @@
             <summary>Advanced Statistical Metrics</summary>
             <div id="bt-advanced-grid" class="bt-grid bt-advanced"></div>
           </details>
+        </div>
+
+        <!-- Ticker-Specific Live News Section -->
+        <div class="card glass ticker-news-card" id="ticker-news-section">
+          <div class="ticker-news-header">
+            <div>
+              <div class="news-tab-switcher">
+                <button class="news-tab-btn active" id="tab-news-stories" data-tab="news">
+                  <span>📰 News stories</span>
+                  <span class="tab-badge" id="badge-news-count">8</span>
+                </button>
+                <button class="news-tab-btn" id="tab-press-releases" data-tab="press">
+                  <span>📢 Press releases</span>
+                  <span class="tab-badge" id="badge-press-count">6</span>
+                </button>
+              </div>
+              <p class="card-subtag" id="news-tab-subtitle">From web sources and news partners</p>
+            </div>
+          </div>
+          <div class="ticker-news-grid" id="ticker-news-grid">
+            <!-- Dynamically populated ticker news items -->
+          </div>
+          <div class="ticker-news-footer" id="ticker-news-footer">
+            <button id="btn-show-more-ticker-news" class="btn-show-more-news">
+              <span id="btn-show-more-text">Show more</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="chevron-svg"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+          </div>
         </div>
 
         <!-- Disclaimer -->

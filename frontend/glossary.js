@@ -868,6 +868,15 @@ const QV_GLOSSARY = {
     range_or_units: 'Percentage and Price Units',
     caution: 'Volatile stocks require wider stop-losses and careful position sizing.',
   },
+
+  institutional_intelligence: {
+    title: 'Institutional & Fundamental Intelligence',
+    what_it_is: 'Combines Wall Street / Dalal Street consensus price targets, revenue trajectory, valuation multiples (P/S), volume dynamics, and gross margins.',
+    how_to_interpret: 'Higher analyst consensus scores and expanding margins signal institutional conviction and strong corporate fundamentals.',
+    how_quantview_uses_it: 'Provides macro-fundamental context alongside pure mathematical ML signals.',
+    range_or_units: 'Consensus Ratings & Multiples',
+    caution: 'Analyst forecasts are subject to macroeconomic shifts and corporate earnings surprises.',
+  },
 };
 
 if (typeof window !== 'undefined') {

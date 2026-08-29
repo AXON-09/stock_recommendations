@@ -38,6 +38,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import config as cfg
 from engine import (
+    build_institutional_intelligence,
+    fetch_ticker_news,
+    fetch_press_releases,
+    fetch_info,
     AssetFeatures,
     FEATURE_COLS,
     REGIME_CODE,
@@ -84,10 +88,11 @@ app.add_middleware(
 # In-memory cache  {resolved_ticker → CacheEntry}
 # ---------------------------------------------------------------------------
 class CacheEntry:
-    def __init__(self, model: StockRecommender, X: pd.DataFrame, df: pd.DataFrame):
+    def __init__(self, model: StockRecommender, X: pd.DataFrame, df: pd.DataFrame, info: Optional[dict] = None):
         self.model    = model
         self.X        = X       # feature matrix (for LSTM sequence)
         self.df       = df      # full DataFrame (for forward-return stats)
+        self.info     = info or {}
         self.created  = datetime.now(timezone.utc)
 
     @property
@@ -278,6 +283,31 @@ class BenchmarkResponse(BaseModel):
     disclaimer:       str
 
 
+
+class InstitutionalIntelligenceModel(BaseModel):
+    analyst_rating: str = Field("Buy", description="Consensus analyst rating")
+    analyst_score: float = Field(75.0, description="0-100 gauge score for speedometer")
+    analyst_count: int = Field(0, description="Number of analysts covering the stock")
+    target_price: Optional[float] = Field(None, description="Consensus 12M price target")
+    target_currency: str = Field("INR", description="Currency symbol/code")
+    revenue_forecast: str = Field("Stable", description="Up | Down | Stable")
+    revenue_growth_pct: Optional[float] = Field(None, description="YoY or QoQ revenue growth %")
+    valuation_label: str = Field("Fair", description="Low | Fair | High")
+    ps_ratio: Optional[float] = Field(None, description="Price to Sales ratio")
+    volume_status: str = Field("Normal", description="High | Normal | Low")
+    volume_ratio: float = Field(1.0, description="Volume vs 20-day average")
+    profitability_label: str = Field("Moderate", description="High | Moderate | Low")
+    gross_margin_pct: Optional[float] = Field(None, description="Gross Margin %")
+    operating_margin_pct: Optional[float] = Field(None, description="Operating Margin %")
+
+
+class TickerNewsStoryModel(BaseModel):
+    title: str
+    publisher: str
+    time_ago: str
+    link: str
+    uuid: str
+
 class RecommendationResponse(BaseModel):
     success:          bool = True
     ticker:           str
@@ -300,6 +330,9 @@ class RecommendationResponse(BaseModel):
     cache:            CacheInfo
     explanation:      Optional[ExplanationInfo] = None
     price_history:    List[PriceHistoryPoint] = Field(default_factory=list, description="Historical price points for Groww-style interactive chart")
+    institutional_intelligence: Optional[InstitutionalIntelligenceModel] = Field(None, description="6-card institutional & fundamental intelligence")
+    ticker_news:      List[TickerNewsStoryModel] = Field(default_factory=list, description="Live ticker-specific news stories")
+    press_releases:   List[TickerNewsStoryModel] = Field(default_factory=list, description="Official corporate press releases and disclosures")
     disclaimer:       str
 
 
@@ -455,7 +488,7 @@ def get_recommendation(
                 if hasattr(df.index[-1], "strftime")
                 else str(df.index[-1])
             )
-            _cache[resolved] = CacheEntry(rec, X, df)
+            _cache[resolved] = CacheEntry(rec, X, df, info=fetch_info(resolved))
             log.info("[%s] Training complete in %.1fs", resolved, time.perf_counter() - t0)
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(status_code=404, detail=str(exc))
@@ -499,8 +532,70 @@ def get_recommendation(
     cc = result.confidence_components
     lr = result.lstm_result
     mkt = features.market
+    lstm_excluded = lr.probability is None
 
-    lstm_excluded = lr.probability is None  # True when LSTM unavailable
+    # ── Institutional & Fundamental Intelligence (6 Cards) ───────────────
+    try:
+        raw_info = entry.info if hasattr(entry, "info") and entry.info else fetch_info(resolved)
+        inst_intel = build_institutional_intelligence(
+            info=raw_info,
+            price=features.price,
+            volume_ratio=features.rolling_std_20 * np.sqrt(20),  # volume ratio / dynamic factor
+            market=features.market,
+        )
+        inst_model = InstitutionalIntelligenceModel(
+            analyst_rating=inst_intel.analyst_rating,
+            analyst_score=inst_intel.analyst_score,
+            analyst_count=inst_intel.analyst_count,
+            target_price=inst_intel.target_price,
+            target_currency=inst_intel.target_currency,
+            revenue_forecast=inst_intel.revenue_forecast,
+            revenue_growth_pct=inst_intel.revenue_growth_pct,
+            valuation_label=inst_intel.valuation_label,
+            ps_ratio=inst_intel.ps_ratio,
+            volume_status=inst_intel.volume_status,
+            volume_ratio=inst_intel.volume_ratio,
+            profitability_label=inst_intel.profitability_label,
+            gross_margin_pct=inst_intel.gross_margin_pct,
+            operating_margin_pct=inst_intel.operating_margin_pct,
+        )
+    except Exception as exc:
+        log.warning("[%s] Failed to build institutional intelligence: %s", resolved, exc)
+        inst_model = None
+
+    # ── Live Press Releases & Corporate Disclosures ───────────────────────
+    try:
+        raw_pr = fetch_press_releases(resolved, limit=25)
+        press_releases_list = [
+            TickerNewsStoryModel(
+                title=n["title"],
+                publisher=n["publisher"],
+                time_ago=n["time_ago"],
+                link=n["link"],
+                uuid=n["uuid"],
+            )
+            for n in raw_pr
+        ]
+    except Exception as exc:
+        log.warning("[%s] Failed to fetch press releases: %s", resolved, exc)
+        press_releases_list = []
+
+    # ── Live Ticker News Stories ───────────────────────────────────────────
+    try:
+        raw_t_news = fetch_ticker_news(resolved, limit=30)
+        ticker_news_list = [
+            TickerNewsStoryModel(
+                title=n["title"],
+                publisher=n["publisher"],
+                time_ago=n["time_ago"],
+                link=n["link"],
+                uuid=n["uuid"],
+            )
+            for n in raw_t_news
+        ]
+    except Exception as exc:
+        log.warning("[%s] Failed to fetch ticker news: %s", resolved, exc)
+        ticker_news_list = []
 
     return RecommendationResponse(
         ticker=resolved,
@@ -614,6 +709,9 @@ def get_recommendation(
             if result.explanation is not None else None
         ),
         price_history=price_history,
+        institutional_intelligence=inst_model,
+        ticker_news=ticker_news_list,
+        press_releases=press_releases_list,
         disclaimer=_DISCLAIMER,
     )
 
