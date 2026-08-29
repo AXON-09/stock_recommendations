@@ -537,9 +537,10 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
     }
 
     // 2. Render SVG Equity Curves
-    if (svg && data.equity_curve && data.equity_curve.length > 1) {
-      renderEquityChart(svg, data.equity_curve, sym);
+    if (data.equity_curve && data.equity_curve.length > 1) {
+      renderEquityChart(data.equity_curve, sym);
     }
+
 
     // 3. Render Cost Scenarios
     if (scenariosGrid && data.cost_scenarios) {
@@ -848,60 +849,183 @@ function renderStockChart(data) {
   drawGrowwStockChart();
 }
 
-function renderEquityChart(svg, points, sym = '$') {
-  const w = 800;
-  const h = 220;
-  const padTop = 20;
-  const padBottom = 25;
-  const padLeft = 65;
-  const padRight = 20;
+// ── Strategy Benchmark Equity Chart ───────────────────────────────────────────
+let _equityPoints      = [];
+let _equityCurrency    = '$';
+let _equityScales      = null;
+let _equityPointerInit = false;
+
+function renderEquityChart(points, sym = '$') {
+  _equityPoints   = points || [];
+  _equityCurrency = sym;
+
+  const symEl = document.getElementById('equity-currency-sym');
+  if (symEl) symEl.textContent = sym;
+
+  const svg       = document.getElementById('equity-chart');
+  const gridLayer = document.getElementById('equity-grid-layer');
+  const pathBh    = document.getElementById('eq-path-bh');
+  const pathSma   = document.getElementById('eq-path-sma');
+  const pathQv    = document.getElementById('eq-path-qv');
+
+  if (!svg || !_equityPoints || _equityPoints.length < 2) return;
+
+  const w         = 800;
+  const h         = 240;
+  const padTop    = 20;
+  const padBottom = 30;
+  const padLeft   = 70;
+  const padRight  = 20;
 
   const allVals = [];
-  points.forEach(p => {
+  _equityPoints.forEach(p => {
     if (p.quantview != null) allVals.push(p.quantview);
     if (p.buy_hold != null) allVals.push(p.buy_hold);
     if (p.sma50_200 != null) allVals.push(p.sma50_200);
   });
 
-  const minV = Math.min(...allVals) * 0.98;
-  const maxV = Math.max(...allVals) * 1.02;
+  if (allVals.length === 0) return;
+
+  let minV = Math.min(...allVals);
+  let maxV = Math.max(...allVals);
+  const diffV = maxV - minV;
+  minV = minV - (diffV * 0.05 || minV * 0.02);
+  maxV = maxV + (diffV * 0.05 || maxV * 0.02);
   const rangeV = Math.max(1, maxV - minV);
 
-  const n = points.length;
+  const n = _equityPoints.length;
   const getX = i => padLeft + (i / (n - 1)) * (w - padLeft - padRight);
   const getY = v => padTop + (1 - (v - minV) / rangeV) * (h - padTop - padBottom);
 
-  const qvPts = points.map((p, i) => `${getX(i).toFixed(1)},${getY(p.quantview).toFixed(1)}`).join(' ');
-  const bhPts = points.map((p, i) => `${getX(i).toFixed(1)},${getY(p.buy_hold).toFixed(1)}`).join(' ');
-  const smaPts = points.map((p, i) => `${getX(i).toFixed(1)},${getY(p.sma50_200).toFixed(1)}`).join(' ');
+  _equityScales = { w, h, padTop, padBottom, padLeft, padRight, minV, maxV, rangeV, getX, getY };
+
+  const bhCoords  = _equityPoints.map((p, i) => `${getX(i).toFixed(1)},${getY(p.buy_hold).toFixed(1)}`);
+  const smaCoords = _equityPoints.map((p, i) => `${getX(i).toFixed(1)},${getY(p.sma50_200).toFixed(1)}`);
+  const qvCoords  = _equityPoints.map((p, i) => `${getX(i).toFixed(1)},${getY(p.quantview).toFixed(1)}`);
+
+  if (pathBh)  pathBh.setAttribute('d', `M ${bhCoords.join(' L ')}`);
+  if (pathSma) pathSma.setAttribute('d', `M ${smaCoords.join(' L ')}`);
+  if (pathQv)  pathQv.setAttribute('d', `M ${qvCoords.join(' L ')}`);
 
   // Grid lines
-  const midV = (minV + maxV) / 2;
-  const gridY1 = getY(maxV).toFixed(1);
-  const gridY2 = getY(midV).toFixed(1);
-  const gridY3 = getY(minV).toFixed(1);
+  const gridSteps = 4;
+  let gridHTML = '';
+  for (let s = 0; s <= gridSteps; s++) {
+    const val  = minV + (s / gridSteps) * rangeV;
+    const yPos = getY(val).toFixed(1);
+    gridHTML += `<line x1="${padLeft}" y1="${yPos}" x2="${w - padRight}" y2="${yPos}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3 3"/>`;
+    gridHTML += `<text x="${padLeft - 8}" y="${Number(yPos) + 4}" fill="hsl(215 15% 55%)" font-size="10.5" text-anchor="end" font-family="monospace">${sym}${Math.round(val).toLocaleString('en-IN')}</text>`;
+  }
 
-  svg.innerHTML = `
-    <!-- Grid -->
-    <line x1="${padLeft}" y1="${gridY1}" x2="${w - padRight}" y2="${gridY1}" stroke="hsl(222 14% 18%)" stroke-dasharray="3,3"/>
-    <line x1="${padLeft}" y1="${gridY2}" x2="${w - padRight}" y2="${gridY2}" stroke="hsl(222 14% 18%)" stroke-dasharray="3,3"/>
-    <line x1="${padLeft}" y1="${gridY3}" x2="${w - padRight}" y2="${gridY3}" stroke="hsl(222 14% 18%)" stroke-dasharray="3,3"/>
-    
-    <!-- Y Labels -->
-    <text x="${padLeft - 8}" y="${Number(gridY1) + 4}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">${sym}${Math.round(maxV).toLocaleString('en-IN')}</text>
-    <text x="${padLeft - 8}" y="${Number(gridY2) + 4}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">${sym}${Math.round(midV).toLocaleString('en-IN')}</text>
-    <text x="${padLeft - 8}" y="${Number(gridY3) + 4}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">${sym}${Math.round(minV).toLocaleString('en-IN')}</text>
+  // X Axis Date labels
+  const dStart = _equityPoints[0].date;
+  const dEnd   = _equityPoints[n - 1].date;
+  gridHTML += `<text x="${padLeft}" y="${h - 8}" fill="hsl(215 15% 55%)" font-size="10.5" text-anchor="start" font-family="monospace">${dStart}</text>`;
+  gridHTML += `<text x="${w - padRight}" y="${h - 8}" fill="hsl(215 15% 55%)" font-size="10.5" text-anchor="end" font-family="monospace">${dEnd}</text>`;
 
-    <!-- X Labels -->
-    <text x="${padLeft}" y="${h - 6}" fill="hsl(210 10% 50%)" font-size="10" font-family="monospace">${points[0].date}</text>
-    <text x="${w - padRight}" y="${h - 6}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">${points[n-1].date}</text>
+  if (gridLayer) gridLayer.innerHTML = gridHTML;
 
-    <!-- Lines -->
-    <polyline points="${bhPts}" fill="none" stroke="hsl(210 90% 60%)" stroke-width="2" stroke-linejoin="round" opacity="0.85"/>
-    <polyline points="${smaPts}" fill="none" stroke="hsl(38 95% 58%)" stroke-width="2" stroke-linejoin="round" opacity="0.85"/>
-    <polyline points="${qvPts}" fill="none" stroke="hsl(160 80% 45%)" stroke-width="2.5" stroke-linejoin="round"/>
-  `;
+  initEquityPointerEvents();
 }
+
+function initEquityPointerEvents() {
+  const stage      = document.getElementById('equity-chart-stage');
+  const crossGroup = document.getElementById('equity-crosshair-group');
+  const lineV      = document.getElementById('eq-crosshair-v');
+  const dotQv      = document.getElementById('eq-dot-qv');
+  const dotBh      = document.getElementById('eq-dot-bh');
+  const dotSma     = document.getElementById('eq-dot-sma');
+  const badgeX     = document.getElementById('eq-badge-x');
+  const tooltip    = document.getElementById('eq-tooltip-card');
+  const ttDate     = document.getElementById('eq-tt-date');
+  const ttQv       = document.getElementById('eq-tt-qv');
+  const ttBh       = document.getElementById('eq-tt-bh');
+  const ttSma      = document.getElementById('eq-tt-sma');
+
+  if (!stage || _equityPointerInit) return;
+  _equityPointerInit = true;
+
+  function updatePointer(e) {
+    if (!_equityPoints || _equityPoints.length < 2 || !_equityScales) return;
+
+    const rect = stage.getBoundingClientRect();
+    const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : null);
+    const clientY = e.clientY ?? (e.touches && e.touches[0] ? e.touches[0].clientY : null);
+    if (clientX == null) return;
+
+    const relX = clientX - rect.left;
+    const { w, h, padTop, padBottom, padLeft, padRight, getX, getY } = _equityScales;
+    const chartWidth = w - padLeft - padRight;
+    const stageWidth = rect.width;
+    const stageHeight = rect.height;
+
+    const scaleX = (relX / stageWidth) * w;
+    const clampedX = Math.max(padLeft, Math.min(w - padRight, scaleX));
+    const ratio = (clampedX - padLeft) / chartWidth;
+    const n = _equityPoints.length;
+    const idx = Math.max(0, Math.min(n - 1, Math.round(ratio * (n - 1))));
+    const pt = _equityPoints[idx];
+
+    const xSvg = getX(idx);
+    const yQv  = getY(pt.quantview);
+    const yBh  = getY(pt.buy_hold);
+    const ySma = getY(pt.sma50_200);
+
+    const xPx  = (xSvg / w) * stageWidth;
+    const yPx  = (yQv / h) * stageHeight;
+
+    crossGroup.style.display = 'block';
+    badgeX.style.display     = 'block';
+    tooltip.style.display    = 'block';
+
+    lineV.setAttribute('x1', xSvg.toFixed(1));
+    lineV.setAttribute('x2', xSvg.toFixed(1));
+    lineV.setAttribute('y1', padTop.toFixed(1));
+    lineV.setAttribute('y2', (h - padBottom).toFixed(1));
+
+    dotQv.setAttribute('cx', xSvg.toFixed(1));
+    dotQv.setAttribute('cy', yQv.toFixed(1));
+
+    dotBh.setAttribute('cx', xSvg.toFixed(1));
+    dotBh.setAttribute('cy', yBh.toFixed(1));
+
+    dotSma.setAttribute('cx', xSvg.toFixed(1));
+    dotSma.setAttribute('cy', ySma.toFixed(1));
+
+    badgeX.textContent = pt.date;
+    badgeX.style.left  = `${xPx}px`;
+
+    ttDate.textContent = pt.date;
+    ttQv.textContent   = `${_equityCurrency}${Number(pt.quantview).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    ttBh.textContent   = `${_equityCurrency}${Number(pt.buy_hold).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    ttSma.textContent  = `${_equityCurrency}${Number(pt.sma50_200).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    const tooltipWidth = 175;
+    let tipLeft = xPx + 14;
+    if (tipLeft + tooltipWidth > stageWidth) {
+      tipLeft = xPx - tooltipWidth - 14;
+    }
+    let tipTop = yPx - 40;
+    if (tipTop < 10) tipTop = 10;
+    if (tipTop > stageHeight - 110) tipTop = stageHeight - 110;
+
+    tooltip.style.left = `${Math.max(10, tipLeft)}px`;
+    tooltip.style.top  = `${tipTop}px`;
+  }
+
+  function hidePointer() {
+    crossGroup.style.display = 'none';
+    badgeX.style.display     = 'none';
+    tooltip.style.display    = 'none';
+  }
+
+  stage.addEventListener('pointermove', updatePointer);
+  stage.addEventListener('pointerdown', updatePointer);
+  stage.addEventListener('pointerleave', hidePointer);
+  stage.addEventListener('pointerup', hidePointer);
+  stage.addEventListener('pointercancel', hidePointer);
+}
+
 
 // ── Main render ───────────────────────────────────────────────────────────────
 function renderAll(data) {

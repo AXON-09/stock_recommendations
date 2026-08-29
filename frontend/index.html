@@ -370,16 +370,38 @@
         </table>
       </div>
 
-      <!-- Equity Curve Visual -->
+      <!-- Equity Curve Visual with Interactive Crosshair -->
       <div class="chart-container">
-        <h3 class="chart-title">Synchronized Portfolio Equity Curves ($)</h3>
+        <h3 class="chart-title">Synchronized Portfolio Equity Curves (<span id="equity-currency-sym">$</span>)</h3>
         <div class="chart-legend">
           <span class="legend-item"><span class="legend-dot dot-qv"></span> QuantView</span>
-          <span class="legend-item"><span class="legend-dot dot-bh"></span> Buy & Hold</span>
+          <span class="legend-item"><span class="legend-dot dot-bh"></span> Buy &amp; Hold</span>
           <span class="legend-item"><span class="legend-dot dot-sma"></span> SMA 50/200</span>
         </div>
-        <svg id="equity-chart" class="equity-chart" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+        <div class="equity-chart-stage" id="equity-chart-stage">
+          <svg id="equity-chart" class="equity-chart" viewBox="0 0 800 240" preserveAspectRatio="none">
+            <g id="equity-grid-layer"></g>
+            <path id="eq-path-bh" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linejoin="round" opacity="0.85" d="" />
+            <path id="eq-path-sma" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linejoin="round" opacity="0.85" d="" />
+            <path id="eq-path-qv" fill="none" stroke="#00d09c" stroke-width="2.5" stroke-linejoin="round" d="" />
+            <!-- Interactive Hover Crosshair & Dots -->
+            <g id="equity-crosshair-group" style="display: none;">
+              <line id="eq-crosshair-v" class="groww-pointer-v" x1="0" y1="10" x2="0" y2="205" />
+              <circle id="eq-dot-qv" cx="0" cy="0" r="4.5" fill="#00d09c" stroke="#ffffff" stroke-width="1.5" />
+              <circle id="eq-dot-bh" cx="0" cy="0" r="4.5" fill="#38bdf8" stroke="#ffffff" stroke-width="1.5" />
+              <circle id="eq-dot-sma" cx="0" cy="0" r="4.5" fill="#fbbf24" stroke="#ffffff" stroke-width="1.5" />
+            </g>
+          </svg>
+          <div id="eq-badge-x" class="groww-axis-badge groww-badge-x" style="display: none;"></div>
+          <div id="eq-tooltip-card" class="groww-tooltip-card eq-tooltip" style="display: none;">
+            <div class="gt-header" id="eq-tt-date">—</div>
+            <div class="gt-row"><span class="gt-lbl" style="color:#00d09c;">QuantView:</span> <strong id="eq-tt-qv" class="gt-val">—</strong></div>
+            <div class="gt-row"><span class="gt-lbl" style="color:#38bdf8;">Buy &amp; Hold:</span> <strong id="eq-tt-bh" class="gt-val">—</strong></div>
+            <div class="gt-row"><span class="gt-lbl" style="color:#fbbf24;">SMA 50/200:</span> <strong id="eq-tt-sma" class="gt-val">—</strong></div>
+          </div>
+        </div>
       </div>
+
 
       <!-- Transaction Cost Sensitivity -->
       <div class="cost-sensitivity-section">
