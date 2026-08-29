@@ -30,6 +30,56 @@ const loadingSteps = {
 let _timerInterval = null;
 let _stepInterval  = null;
 let _lastTicker    = null;
+let _hasAnalysis   = false;
+let _isNewsOnlyMode = false;
+
+function updateAnalysisNavVisibility(hasAnalysis) {
+  _hasAnalysis = !!hasAnalysis;
+  document.querySelectorAll('.analysis-nav-item').forEach(el => {
+    el.classList.toggle('hidden', !_hasAnalysis);
+  });
+}
+
+function setActiveSidebarLink(linkId) {
+  document.querySelectorAll('.sidebar-link').forEach(link => {
+    if (link.id === linkId) {
+      link.classList.add('active');
+      if (!link.querySelector('.sidebar-link-glow')) {
+        const glow = document.createElement('span');
+        glow.className = 'sidebar-link-glow';
+        link.appendChild(glow);
+      }
+    } else {
+      link.classList.remove('active');
+      const glow = link.querySelector('.sidebar-link-glow');
+      if (glow) glow.remove();
+    }
+  });
+}
+
+function setNewsOnlyMode(enabled) {
+  _isNewsOnlyMode = !!enabled;
+  const dashboardMain = document.querySelector('.dashboard-main');
+  const toggleText = document.getElementById('news-toggle-text');
+  const toggleViewBtn = document.getElementById('btn-toggle-news-view');
+
+  if (!dashboardMain) return;
+
+  if (_isNewsOnlyMode) {
+    dashboardMain.classList.add('news-only-active');
+    if (toggleText) toggleText.textContent = '← Back to Full Dashboard';
+    if (toggleViewBtn) toggleViewBtn.classList.add('active-mode');
+    setActiveSidebarLink('nav-link-news');
+    const newsSection = document.getElementById('market-news');
+    if (newsSection) {
+      newsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  } else {
+    dashboardMain.classList.remove('news-only-active');
+    if (toggleText) toggleText.textContent = 'Focus: News Only Mode';
+    if (toggleViewBtn) toggleViewBtn.classList.remove('active-mode');
+  }
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const pct = (v, digits = 1) =>
@@ -155,9 +205,12 @@ function showError(msg) {
 
 function showResult() {
   hideLoading();
+  _hasAnalysis = true;
+  updateAnalysisNavVisibility(true);
   errorState.classList.add('hidden');
   resultPanel.classList.remove('hidden');
   resultPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setActiveSidebarLink('nav-link-dash');
 }
 
 // ── Render functions ──────────────────────────────────────────────────────────
@@ -1524,53 +1577,9 @@ function initNewsPortal() {
     });
   }
 
-  // Toggle News Only Mode
-  function setNewsOnlyMode(enabled) {
-    isNewsOnlyMode = enabled;
-    const dashboardMain = document.querySelector('.dashboard-main');
-    if (!dashboardMain) return;
-
-    if (isNewsOnlyMode) {
-      dashboardMain.classList.add('news-only-active');
-      if (toggleText) toggleText.textContent = '← Back to Full Dashboard';
-      if (toggleViewBtn) toggleViewBtn.classList.add('active-mode');
-      if (navLinkNews) navLinkNews.classList.add('active');
-      if (navLinkDash) navLinkDash.classList.remove('active');
-      
-      const newsSection = document.getElementById('market-news');
-      if (newsSection) {
-        newsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    } else {
-      dashboardMain.classList.remove('news-only-active');
-      if (toggleText) toggleText.textContent = 'Focus: News Only Mode';
-      if (toggleViewBtn) toggleViewBtn.classList.remove('active-mode');
-      if (navLinkNews) navLinkNews.classList.remove('active');
-      if (navLinkDash) navLinkDash.classList.add('active');
-    }
-  }
-
   if (toggleViewBtn) {
     toggleViewBtn.addEventListener('click', () => {
-      setNewsOnlyMode(!isNewsOnlyMode);
-    });
-  }
-
-  // Sidebar link clicks
-  if (navLinkNews) {
-    navLinkNews.addEventListener('click', (e) => {
-      e.preventDefault();
-      setNewsOnlyMode(true);
-    });
-  }
-
-  if (navLinkDash) {
-    navLinkDash.addEventListener('click', (e) => {
-      if (isNewsOnlyMode) {
-        e.preventDefault();
-        setNewsOnlyMode(false);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
+      setNewsOnlyMode(!_isNewsOnlyMode);
     });
   }
 
@@ -1891,6 +1900,73 @@ function initNotificationCenter() {
 }
 
 // ── Settings Modal ──────────────────────────────────────────────────────────
+
+// ── Unified Sidebar Navigation Manager ──────────────────────────────────────
+function initSidebarNavigation() {
+  const navItems = [
+    { id: 'nav-link-dash', target: '#result-panel', isDash: true },
+    { id: 'nav-link-chart', target: '#stock-chart-card', requiresAnalysis: true },
+    { id: 'nav-link-shap', target: '#shap-card', requiresAnalysis: true },
+    { id: 'nav-link-benchmark', target: '#benchmark-card', requiresAnalysis: true },
+    { id: 'nav-link-watchlist', target: '#market-watchlist' },
+    { id: 'nav-link-news', target: '#market-news', isNews: true },
+    { id: 'nav-link-settings', isSettings: true }
+  ];
+
+  navItems.forEach(item => {
+    const linkEl = document.getElementById(item.id);
+    if (!linkEl) return;
+
+    linkEl.addEventListener('click', (e) => {
+      // Close mobile sidebar if open
+      const sidebarEl = document.getElementById('app-sidebar');
+      if (sidebarEl) sidebarEl.classList.remove('open');
+
+      // Settings modal handler
+      if (item.isSettings) {
+        e.preventDefault();
+        const modal = document.getElementById('settings-modal-overlay');
+        if (modal) modal.classList.remove('hidden');
+        return;
+      }
+
+      e.preventDefault();
+
+      // If currently in news-only mode and clicking another nav item, exit news-only mode first
+      if (_isNewsOnlyMode && !item.isNews) {
+        setNewsOnlyMode(false);
+      }
+
+      // Update active highlight in sidebar
+      setActiveSidebarLink(item.id);
+
+      // Handle Dashboard Link
+      if (item.isDash) {
+        if (_hasAnalysis) {
+          const res = document.getElementById('result-panel');
+          if (res && !res.classList.contains('hidden')) {
+            res.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+          }
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
+      // Handle Section Smooth Scroll
+      if (item.target) {
+        const targetEl = document.querySelector(item.target);
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    });
+  });
+
+  // Ensure initial analysis menu item visibility
+  updateAnalysisNavVisibility(_hasAnalysis);
+}
+
 function initSettingsModal() {
   const navSettings = document.getElementById('nav-link-settings');
   const modal = document.getElementById('settings-modal-overlay');
@@ -1929,6 +2005,7 @@ function initSettingsModal() {
 function initPlatform() {
   renderLiveWatchlist();
   initNewsPortal();
+  initSidebarNavigation();
   initSearchAutocomplete();
   initNotificationCenter();
   initSettingsModal();
