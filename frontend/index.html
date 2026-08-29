@@ -8,8 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <link rel="alternate icon" href="favicon.svg" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=10" />
+  <link rel="shortcut icon" type="image/svg+xml" href="/favicon.svg?v=10" />
+  <link rel="apple-touch-icon" href="/favicon.svg?v=10" />
   <link rel="stylesheet" href="style.css" />
 </head>
 
@@ -19,14 +20,12 @@
   <!-- ─────────────────── SIDEBAR NAVIGATION ─────────────────── -->
   <aside class="app-sidebar" id="app-sidebar">
     <div class="sidebar-brand">
-      <div class="brand-logo-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="diamond-svg">
-          <polygon points="6 3 18 3 22 9 12 22 2 9 6 3" />
-        </svg>
-      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="#38BDF8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" class="diamond-svg">
+        <polygon points="12 2 22 12 12 22 2 12" />
+      </svg>
       <div class="brand-title-wrap">
         <span class="brand-name">QuantView</span>
-        <span class="brand-badge">PRO AI</span>
+        <span class="brand-badge">AI</span>
       </div>
     </div>
 
@@ -96,9 +95,9 @@
 
       <div class="navbar-right">
         <div class="quick-shortcut-badge" onclick="document.getElementById('ticker-input').focus()">
-          <span class="shortcut-icon">⌘</span>
-          <span class="shortcut-key">K</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-nav-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           <span class="shortcut-label">Search</span>
+          <kbd class="kbd-shortcut">Ctrl K</kbd>
         </div>
         <div class="notification-wrap">
           <button id="btn-notifications" class="nav-action-btn" title="System Notifications" aria-label="Notifications">
@@ -125,7 +124,7 @@
         <div class="user-profile-pill">
           <div class="avatar-circle">Q</div>
           <div class="user-info">
-            <span class="user-name">QuantView Pro</span>
+            <span class="user-name">QuantView AI</span>
             <span class="user-plan">Institutional tier</span>
           </div>
         </div>
@@ -154,7 +153,7 @@
 
       <!-- Market Overview Ticker Ribbon -->
       <section class="market-ribbon-grid">
-        <div class="market-chip glass">
+        <div class="market-chip glass" data-ticker="NIFTY" onclick="triggerMarketChip('NIFTY')" title="Click to start analysis for NIFTY 50">
           <div class="chip-top">
             <span class="chip-name">NIFTY 50</span>
             <span class="chip-flag">🇮🇳</span>
@@ -165,7 +164,7 @@
           </div>
           <svg class="chip-sparkline" viewBox="0 0 100 24"><path d="M0,18 Q20,15 40,20 T70,8 T100,4" fill="none" stroke="#22c55e" stroke-width="2"></path></svg>
         </div>
-        <div class="market-chip glass">
+        <div class="market-chip glass" data-ticker="SENSEX" onclick="triggerMarketChip('SENSEX')" title="Click to start analysis for SENSEX">
           <div class="chip-top">
             <span class="chip-name">SENSEX</span>
             <span class="chip-flag">🇮🇳</span>
@@ -176,7 +175,7 @@
           </div>
           <svg class="chip-sparkline" viewBox="0 0 100 24"><path d="M0,16 Q25,18 50,12 T80,6 T100,5" fill="none" stroke="#22c55e" stroke-width="2"></path></svg>
         </div>
-        <div class="market-chip glass">
+        <div class="market-chip glass" data-ticker="S&P 500" onclick="triggerMarketChip('S&P 500')" title="Click to start analysis for S&P 500">
           <div class="chip-top">
             <span class="chip-name">S&amp;P 500</span>
             <span class="chip-flag">🇺🇸</span>
@@ -187,7 +186,7 @@
           </div>
           <svg class="chip-sparkline" viewBox="0 0 100 24"><path d="M0,19 Q30,14 60,16 T100,6" fill="none" stroke="#22c55e" stroke-width="2"></path></svg>
         </div>
-        <div class="market-chip glass">
+        <div class="market-chip glass" data-ticker="NASDAQ" onclick="triggerMarketChip('NASDAQ')" title="Click to start analysis for NASDAQ 100">
           <div class="chip-top">
             <span class="chip-name">NASDAQ 100</span>
             <span class="chip-flag">🇺🇸</span>
@@ -355,42 +354,16 @@
           </div>
         </div>
 
-        <!-- HERO Card -->
+        <!-- HERO Card (Institutional Asset Header) -->
         <div class="card glass hero-card">
-          <div class="hero-left-wrapper">
+          <div class="hero-identity-section">
             <div class="asset-logo-container" id="hero-logo-wrap">
               <img id="hero-company-logo" class="asset-logo-img" alt="Official Logo" loading="lazy" />
             </div>
-            <div class="hero-left">
-              <div class="hero-top-title-row">
+            <div class="hero-title-stack">
+              <!-- Top Row: Name + Badges + Watchlist Action -->
+              <div class="hero-name-badge-row">
                 <h1 id="res-company-name" class="hero-company-name">—</h1>
-                <div class="hero-actions-cluster">
-                  <button id="btn-hero-add-watchlist" class="btn-hero-watchlist" title="Add to Live Watchlist">
-                    <span class="wl-star-icon">⭐</span>
-                    <span id="hero-watchlist-text">+ Watchlist</span>
-                  </button>
-                  <!-- Three-dot action menu -->
-                <div class="hero-menu-wrap">
-                  <button id="hero-three-dots-btn" class="hero-three-dots-btn" title="Stock Actions" aria-label="Stock Actions">
-                    <svg viewBox="0 0 24 24" fill="currentColor" class="three-dots-svg"><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="19" r="2"></circle></svg>
-                  </button>
-                  <div id="hero-action-dropdown" class="hero-action-dropdown hidden">
-                    <button class="hero-dropdown-item" id="action-copy-ticker">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                      <span>Copy Ticker</span>
-                    </button>
-                    <button class="hero-dropdown-item" id="action-view-tradingview">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>
-                      <span>TradingView Chart</span>
-                    </button>
-                    <button class="hero-dropdown-item" id="action-view-yahoo">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                      <span>Yahoo Finance</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div class="hero-ticker-row">
                 <span id="res-ticker" class="hero-ticker-tag">—</span>
                 <div id="market-badge" class="market-badge">
                   <span id="mb-exchange">—</span>
@@ -398,22 +371,59 @@
                   <span id="mb-country">—</span>
                   <span id="mb-etf-wrap" class="hidden"><span class="mb-sep">•</span><span id="mb-etf">ETF</span></span>
                 </div>
+                <div class="hero-actions-cluster">
+                  <button id="btn-hero-add-watchlist" class="btn-hero-watchlist" title="Add to Live Watchlist">
+                    <span class="wl-star-icon">⭐</span>
+                    <span id="hero-watchlist-text">+ Watchlist</span>
+                  </button>
+                  <div class="hero-menu-wrap">
+                    <button id="hero-three-dots-btn" class="hero-three-dots-btn" title="Stock Actions" aria-label="Stock Actions">
+                      <svg viewBox="0 0 24 24" fill="currentColor" class="three-dots-svg"><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="19" r="2"></circle></svg>
+                    </button>
+                    <div id="hero-action-dropdown" class="hero-action-dropdown hidden">
+                      <button class="hero-dropdown-item" id="action-copy-ticker">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span>Copy Ticker</span>
+                      </button>
+                      <button class="hero-dropdown-item" id="action-view-tradingview">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>
+                        <span>TradingView Chart</span>
+                      </button>
+                      <button class="hero-dropdown-item" id="action-view-yahoo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                        <span>Yahoo Finance</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <p id="res-sector" class="hero-sector">—</p>
-              <p id="cache-note" class="cache-note">—</p>
+              <!-- Bottom Meta Row: Sector / Benchmark, Horizon & Freshness -->
+              <div class="hero-subline-row">
+                <span id="res-sector" class="hero-sector-tag">—</span>
+                <span class="hero-dot-sep">•</span>
+                <span id="cache-note" class="hero-cache-status">—</span>
+              </div>
             </div>
           </div>
-          <div class="hero-right">
-            <div class="price-row">
+
+          <!-- Hero Right: Price + Rec Badge + Win Probability Callout -->
+          <div class="hero-stats-section">
+            <div class="hero-price-rec-group">
               <span id="res-price" class="hero-price">—</span>
+              <div id="rec-badge" class="rec-badge">—</div>
             </div>
-            <div id="rec-badge" class="rec-badge">—</div>
-            <div class="prob-row">
-              <span id="res-prob" class="prob-val">—</span>
-              <span class="prob-label">Ensemble Probability</span>
-              <button class="info-btn" data-info="ensemble_probability" aria-label="What is Ensemble Probability?">ⓘ</button>
+            <div class="hero-substats-group">
+              <div class="prob-tag-pill">
+                <span class="prob-label">AI Win Prob:</span>
+                <span id="res-prob" class="prob-val">—</span>
+                <button class="info-btn" data-info="ensemble_probability" aria-label="What is Ensemble Probability?">ⓘ</button>
+              </div>
+              <span class="hero-dot-sep">•</span>
+              <div class="horizon-tag-pill">
+                <span>Horizon: <strong>~20 Sessions</strong></span>
+                <button class="info-btn" data-info="t20_horizon" aria-label="What is the ~20 trading sessions forecast horizon?">ⓘ</button>
+              </div>
             </div>
-            <p class="forecast-note">Forecast Horizon: ~20 Trading Sessions <button class="info-btn" data-info="t20_horizon" aria-label="What is the ~20 trading sessions forecast horizon?">ⓘ</button></p>
           </div>
         </div>
 
@@ -1270,14 +1280,26 @@
   </div>
 </div>
 
-<script src="glossary.js"></script>
-<script src="infobox.js"></script>
-<script src="logos.js"></script>
-<script src="services/logoService.js"></script>
-<script src="services/marketauxService.js"></script>
-<script src="services/watchlistService.js"></script>
-<script src="services/notificationService.js"></script>
-<script src="services/searchService.js"></script>
-<script src="app.js"></script>
+<script>
+function triggerMarketChip(ticker) {
+  const inp = document.getElementById('ticker-input');
+  if (inp) inp.value = ticker;
+  if (window.QV_analyze) {
+    window.QV_analyze(ticker);
+  } else {
+    const btn = document.getElementById('analyze-btn');
+    if (btn) btn.click();
+  }
+}
+</script>
+<script src="glossary.js?v=5"></script>
+<script src="infobox.js?v=5"></script>
+<script src="logos.js?v=5"></script>
+<script src="services/logoService.js?v=5"></script>
+<script src="services/marketauxService.js?v=5"></script>
+<script src="services/watchlistService.js?v=5"></script>
+<script src="services/notificationService.js?v=5"></script>
+<script src="services/searchService.js?v=5"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

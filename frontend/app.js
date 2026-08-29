@@ -531,7 +531,12 @@ function renderHero(data) {
   if (mkt.is_etf) {
     sectorEl.textContent = mkt.etf_category || 'Exchange-Traded Fund';
   } else {
-    sectorEl.textContent = data.sector || 'Unknown';
+    const rawSector = (data.sector || '').trim();
+    if (!rawSector || rawSector.toLowerCase() === 'unknown' || rawSector.toLowerCase() === 'none') {
+      sectorEl.textContent = data.ticker.startsWith('^') ? 'Benchmark Market Index' : 'Equities Universe';
+    } else {
+      sectorEl.textContent = rawSector;
+    }
   }
 
   // Price — currency-aware
@@ -1583,6 +1588,8 @@ async function analyze(ticker) {
     console.error(err);
   }
 }
+window.QV_analyze = analyze;
+window.analyze = analyze;
 
 // ── Event listeners ───────────────────────────────────────────────────────────
 analyzeBtn.addEventListener('click', () => {
@@ -1605,9 +1612,9 @@ tickerInput.addEventListener('keydown', e => {
   }
 });
 
-// Global delegated listener for quick-pick buttons (including watchlist and ticker buttons)
+// Global delegated listener for quick-pick buttons, watchlist items, and market ribbon cards
 document.addEventListener('click', e => {
-  const btn = e.target.closest('.qp-btn');
+  const btn = e.target.closest('.qp-btn, .market-chip');
   if (btn && btn.dataset.ticker) {
     const t = btn.dataset.ticker;
     tickerInput.value = t;
