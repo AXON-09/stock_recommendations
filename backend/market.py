@@ -327,15 +327,38 @@ def get_market_info(ticker: str, yf_info: dict) -> MarketInfo:
     }
     currency_symbol = CURRENCY_SYMBOLS.get(currency, currency + " ")
 
+    # Known US ticker exchange mappings
+    KNOWN_TICKER_EXCHANGE: dict = {
+        "AAPL": "NASDAQ", "TSLA": "NASDAQ", "NVDA": "NASDAQ", "MSFT": "NASDAQ",
+        "AMZN": "NASDAQ", "GOOGL": "NASDAQ", "GOOG": "NASDAQ", "META": "NASDAQ",
+        "QQQ": "NASDAQ", "AMD": "NASDAQ", "INTC": "NASDAQ", "NFLX": "NASDAQ",
+        "PYPL": "NASDAQ", "COIN": "NASDAQ", "PLTR": "NASDAQ", "AVGO": "NASDAQ",
+        "SPY": "NYSE Arca", "IVV": "NYSE Arca", "VOO": "NYSE Arca", "IWM": "NYSE Arca",
+        "DIA": "NYSE Arca", "GLD": "NYSE Arca",
+        "JPM": "NYSE", "BRK-B": "NYSE", "V": "NYSE", "DIS": "NYSE", "WMT": "NYSE",
+        "BA": "NYSE", "XOM": "NYSE", "CVX": "NYSE", "PFE": "NYSE",
+    }
+
     # Exchange name cleanup
     EXCHANGE_NAMES: dict = {
-        "NMS": "NASDAQ", "NGM": "NASDAQ", "NCM": "NASDAQ",
-        "NYQ": "NYSE", "NYA": "NYSE",
-        "PCX": "NYSE Arca",
-        "BTS": "CBOE",
+        "NMS": "NASDAQ", "NGM": "NASDAQ", "NCM": "NASDAQ", "NASDAQ": "NASDAQ",
+        "NYQ": "NYSE", "NYA": "NYSE", "NYSE": "NYSE",
+        "PCX": "NYSE Arca", "ARCX": "NYSE Arca",
+        "BTS": "CBOE", "BATS": "CBOE",
         "LSE": "LSE", "LON": "LSE",
     }
-    exchange = EXCHANGE_NAMES.get(exchange_yf, full_exch or exchange_yf or "Unknown")
+    raw_exchange = exchange_yf or full_exch
+    exchange = EXCHANGE_NAMES.get(exchange_yf, full_exch or EXCHANGE_NAMES.get(full_exch, None))
+
+    if not exchange or exchange.upper() == "UNKNOWN":
+        if ticker_upper in KNOWN_TICKER_EXCHANGE:
+            exchange = KNOWN_TICKER_EXCHANGE[ticker_upper]
+        elif currency == "USD":
+            exchange = "NASDAQ / NYSE"
+        elif currency == "INR":
+            exchange = "NSE"
+        else:
+            exchange = "Global Market"
 
     # Country from currency/exchange heuristics
     CURRENCY_COUNTRY: dict = {
@@ -346,7 +369,7 @@ def get_market_info(ticker: str, yf_info: dict) -> MarketInfo:
         "SGD": "Singapore", "CHF": "Switzerland",
         "CNY": "China",
     }
-    country = CURRENCY_COUNTRY.get(currency, "Global")
+    country = CURRENCY_COUNTRY.get(currency, "United States" if currency == "USD" else "Global")
 
     return MarketInfo(
         country=country, exchange=exchange,
@@ -354,6 +377,7 @@ def get_market_info(ticker: str, yf_info: dict) -> MarketInfo:
         is_india=(currency == "INR"),
         is_etf=is_etf, etf_category=etf_category,
     )
+
 
 
 # ---------------------------------------------------------------------------

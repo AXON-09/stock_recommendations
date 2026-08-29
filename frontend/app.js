@@ -110,6 +110,15 @@ function stopLoadingSteps() {
 
 // ── UI state helpers ──────────────────────────────────────────────────────────
 function showLoading() {
+  if (_timerInterval) {
+    clearInterval(_timerInterval);
+    _timerInterval = null;
+  }
+  if (_stepInterval) {
+    clearInterval(_stepInterval);
+    _stepInterval = null;
+  }
+
   loadingState.classList.remove('hidden');
   errorState.classList.add('hidden');
   resultPanel.classList.add('hidden');
@@ -128,7 +137,10 @@ function showLoading() {
 function hideLoading() {
   loadingState.classList.add('hidden');
   analyzeBtn.disabled = false;
-  clearInterval(_timerInterval);
+  if (_timerInterval) {
+    clearInterval(_timerInterval);
+    _timerInterval = null;
+  }
   stopLoadingSteps();
 }
 
@@ -156,11 +168,16 @@ function renderHero(data) {
   document.getElementById('res-ticker').textContent = data.display_ticker || data.ticker;
 
   const badge = document.getElementById('market-badge');
-  document.getElementById('mb-exchange').textContent = mkt.exchange || '—';
-  document.getElementById('mb-country').textContent  = mkt.country  || '—';
+  let exchName = mkt.exchange || '—';
+  if (!exchName || exchName.toUpperCase() === 'UNKNOWN') {
+    exchName = mkt.is_india ? 'NSE' : (mkt.currency === 'USD' ? 'NASDAQ / NYSE' : (mkt.country || 'Global'));
+  }
+  document.getElementById('mb-exchange').textContent = exchName;
+  document.getElementById('mb-country').textContent  = mkt.country  || (mkt.is_india ? 'India' : (mkt.currency === 'USD' ? 'United States' : '—'));
   badge.className = 'market-badge';
   if (mkt.is_india) badge.classList.add('india');
   else if (mkt.currency === 'USD') badge.classList.add('us');
+
 
   // ETF badge segment — only shown when the ticker is genuinely an ETF/fund
   const etfWrap = document.getElementById('mb-etf-wrap');

@@ -28,9 +28,10 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
 
 # Allow imports from backend/ when run from project root
 sys.path.insert(0, str(Path(__file__).parent))
@@ -762,9 +763,17 @@ def list_cache():
 # ---------------------------------------------------------------------------
 _FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    fav_path = _FRONTEND_DIR / "favicon.svg"
+    if fav_path.exists():
+        return FileResponse(str(fav_path), media_type="image/svg+xml")
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
+
 if _FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
     log.info("Frontend served from %s", _FRONTEND_DIR)
+
 else:
     log.warning(
         "Frontend directory not found at %s. "
