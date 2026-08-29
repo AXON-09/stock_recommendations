@@ -73,6 +73,10 @@ try:
     import torch
     import torch.nn as nn
     from torch.utils.data import DataLoader, TensorDataset
+    try:
+        torch.set_num_threads(2)
+    except Exception:
+        pass
     TORCH_AVAILABLE = True
 except ImportError:
     logging.warning(
@@ -99,7 +103,7 @@ FEATURE_COLS = cfg.FEATURE_COLS
 if TORCH_AVAILABLE:
     class LSTMNet(nn.Module):
         """
-        2-layer LSTM for sequential price-pattern recognition.
+        Fast, lightweight LSTM for sequential price-pattern recognition on CPU.
 
         Input  : (batch, seq_len, n_features)
         Output : (batch, 1) — probability of positive T+20 return (sigmoid)
@@ -108,9 +112,9 @@ if TORCH_AVAILABLE:
         def __init__(
             self,
             n_features: int,
-            hidden: int = 64,
-            layers: int = 2,
-            dropout: float = 0.30,
+            hidden: int = 32,
+            layers: int = 1,
+            dropout: float = 0.20,
         ):
             super().__init__()
             self.lstm = nn.LSTM(
@@ -118,7 +122,6 @@ if TORCH_AVAILABLE:
                 hidden_size=hidden,
                 num_layers=layers,
                 batch_first=True,
-                dropout=dropout if layers > 1 else 0.0,
             )
             self.drop = nn.Dropout(dropout)
             self.fc   = nn.Linear(hidden, 1)
@@ -130,6 +133,7 @@ if TORCH_AVAILABLE:
 
 else:
     LSTMNet = None  # type: ignore
+
 
 
 # ---------------------------------------------------------------------------
@@ -378,13 +382,13 @@ class StockRecommender:
             return None
 
         model     = LSTMNet(n_features=X_arr.shape[1])
-        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+        optimizer = torch.optim.Adam(model.parameters(), lr=2e-3, weight_decay=1e-5)
         criterion = nn.BCELoss()
         ds     = TensorDataset(
             torch.tensor(seqs,   dtype=torch.float32),
             torch.tensor(labels, dtype=torch.float32).unsqueeze(1),
         )
-        loader = DataLoader(ds, batch_size=32, shuffle=True)
+        loader = DataLoader(ds, batch_size=64, shuffle=True)
         model.train()
         for _ in range(epochs):
             for xb, yb in loader:

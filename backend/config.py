@@ -34,26 +34,27 @@ set eliminates this look-ahead bias.
 # ---------------------------------------------------------------------------
 # ML — sequence model
 # ---------------------------------------------------------------------------
-LSTM_SEQUENCE_LENGTH: int = 60
+LSTM_SEQUENCE_LENGTH: int = 30
 """Lookback window (trading days) fed to the LSTM as a sequence."""
 
 # ---------------------------------------------------------------------------
 # ML — walk-forward
 # ---------------------------------------------------------------------------
-WALK_FORWARD_SPLITS: int = 4
+WALK_FORWARD_SPLITS: int = 3
 """Number of expanding walk-forward folds used during OOF backtesting."""
 
-XGB_ESTIMATORS_FOLD: int = 100
+XGB_ESTIMATORS_FOLD: int = 40
 """XGBoost trees per fold during walk-forward (fast)."""
 
-XGB_ESTIMATORS_FULL: int = 200
+XGB_ESTIMATORS_FULL: int = 80
 """XGBoost trees for the final full-dataset model (higher quality)."""
 
-LSTM_EPOCHS_FOLD: int = 12
-"""LSTM training epochs per fold (kept low for speed)."""
+LSTM_EPOCHS_FOLD: int = 4
+"""LSTM training epochs per fold (kept low for cloud CPU speed)."""
 
-LSTM_EPOCHS_FULL: int = 25
+LSTM_EPOCHS_FULL: int = 8
 """LSTM training epochs for the final full-dataset model."""
+
 
 # ---------------------------------------------------------------------------
 # Decision thresholds
