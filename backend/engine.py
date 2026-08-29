@@ -97,22 +97,27 @@ REGIME_CODE     = {"trending_up": 1, "trending_down": -1, "choppy": 0}
 
 @dataclass
 class InstitutionalIntelligence:
-    analyst_rating: str           # "Buy", "Strong Buy", "Hold", "Sell"
-    analyst_score: float          # 0-100
-    analyst_count: int            # e.g. 41
-    target_price: Optional[float] # e.g. 2460.05
+    analyst_rating: str           # "BUY", "STRONG BUY", "HOLD", "SELL", "STRONG SELL", "Not Covered"
+    analyst_score: float          # 0-100 gauge score
+    analyst_count: int            # e.g. 27 or 0
+    target_price: Optional[float] # e.g. 1677.89 or None
     target_high: Optional[float]
     target_low: Optional[float]
     target_currency: str          # "INR" or "USD"
-    revenue_forecast: str         # "Up" | "Down" | "Stable"
-    revenue_growth_pct: Optional[float]
-    valuation_label: str          # "Low" | "Fair" | "High"
-    ps_ratio: Optional[float]     # e.g. 3.07
-    volume_status: str            # "High" | "Normal" | "Low"
-    volume_ratio: float           # e.g. 1.87
-    profitability_label: str      # "High" | "Moderate" | "Low"
-    gross_margin_pct: Optional[float] # e.g. 98.35
+    currency_symbol: str          # "₹" or "$"
+    revenue_forecast: str         # "↑ Growing", "→ Stable", "↓ Declining", "N/A"
+    revenue_period: str           # "Next quarter", "Next year", "YoY Trailing"
+    revenue_growth_pct: Optional[float] # e.g. 29.7
+    valuation_label: str          # "Low P/S", "Fair P/S", "High P/S", "N/A"
+    ps_ratio: Optional[float]     # e.g. 1.54 or None
+    trading_volume: Optional[int] # e.g. 12450000
+    trading_volume_str: str       # e.g. "12.5M shares"
+    volume_status: str            # "High", "Normal", "Low"
+    volume_ratio: float           # e.g. 1.15
+    profitability_label: str      # "High Gross Margin", "Moderate Gross Margin", "Low Gross Margin", "N/A"
+    gross_margin_pct: Optional[float] # e.g. 33.84 or None
     operating_margin_pct: Optional[float]
+    provider: str = "Twelve Data" # Data provider tag
 
 
 def fetch_ticker_news(ticker: str, limit: int = 30) -> List[Dict[str, Any]]:
@@ -699,42 +704,92 @@ def build_feature_matrix(
     return X, y, df
 
 
+def _format_volume_shares(vol: int) -> str:
+    if vol >= 1_000_000_000:
+        return f"{vol / 1_000_000_000:.2f}B shares"
+    elif vol >= 1_000_000:
+        return f"{vol / 1_000_000:.1f}M shares"
+    elif vol >= 1_000:
+        return f"{vol / 1_000:.1f}K shares"
+    return f"{vol} shares"
+
+
 def build_institutional_intelligence(
     info: Dict[str, Any],
     price: float,
     volume_ratio: float,
     market: MarketInfo,
+    ticker: str = "",
+    live_volume: Optional[int] = None,
 ) -> InstitutionalIntelligence:
     quote_type = str(info.get("quoteType", "")).upper()
     is_index = quote_type in {"INDEX", "ETF", "MUTUALFUND"} or market.is_etf
 
-    # 1. Analyst Consensus (Authentic YFinance metadata)
+    curr_sym = "₹" if market.is_india else "$"
+
+    # Try Twelve Data first (Primary Provider)
+    td_data = None
+    if ticker:
+        try:
+            from twelvedata import fetch_twelve_data_institutional
+            td_data = fetch_twelve_data_institutional(ticker, market.is_india, volume_ratio)
+        except Exception as e:
+            log.info("Twelve Data fetch skipped: %s", e)
+
+    if td_data:
+        vol_int = td_data.get("trading_volume") or live_volume or int(info.get("regularMarketVolume") or info.get("volume") or 0)
+        vol_str = _format_volume_shares(vol_int) if vol_int > 0 else "N/A"
+        return InstitutionalIntelligence(
+            analyst_rating=td_data["analyst_rating"],
+            analyst_score=td_data["analyst_score"],
+            analyst_count=td_data["analyst_count"],
+            target_price=td_data["target_price"],
+            target_high=td_data["target_high"],
+            target_low=td_data["target_low"],
+            target_currency=td_data["target_currency"],
+            currency_symbol=td_data["currency_symbol"],
+            revenue_forecast=td_data["revenue_forecast"],
+            revenue_period=td_data["revenue_period"],
+            revenue_growth_pct=td_data["revenue_growth_pct"],
+            valuation_label=td_data["valuation_label"],
+            ps_ratio=td_data["ps_ratio"],
+            trading_volume=vol_int if vol_int > 0 else None,
+            trading_volume_str=vol_str,
+            volume_status=td_data["volume_status"],
+            volume_ratio=td_data["volume_ratio"],
+            profitability_label=td_data["profitability_label"],
+            gross_margin_pct=td_data["gross_margin_pct"],
+            operating_margin_pct=None,
+            provider="Twelve Data",
+        )
+
+    # 1. Analyst Consensus (Authentic metadata)
     raw_rec = info.get("recommendationKey")
     rec_mean = info.get("recommendationMean")
     
     if raw_rec and str(raw_rec).lower() != "none":
         rec_clean = str(raw_rec).lower().replace("_", " ")
         rec_map = {
-            "strong buy": ("Strong Buy", 90.0),
-            "buy": ("Buy", 75.0),
-            "hold": ("Hold", 50.0),
-            "underperform": ("Underperform", 30.0),
-            "sell": ("Sell", 15.0),
+            "strong buy": ("STRONG BUY", 90.0),
+            "buy": ("BUY", 75.0),
+            "hold": ("HOLD", 50.0),
+            "underperform": ("UNDERPERFORM", 30.0),
+            "sell": ("SELL", 15.0),
         }
-        rating_str, rating_score = rec_map.get(rec_clean, ("Buy", 70.0))
+        rating_str, rating_score = rec_map.get(rec_clean, ("BUY", 70.0))
     elif rec_mean is not None and np.isfinite(rec_mean) and rec_mean > 0:
         score = max(0.0, min(100.0, float((5.0 - rec_mean) / 4.0 * 100.0)))
         rating_score = round(score, 1)
         if rec_mean <= 1.5:
-            rating_str = "Strong Buy"
+            rating_str = "STRONG BUY"
         elif rec_mean <= 2.5:
-            rating_str = "Buy"
+            rating_str = "BUY"
         elif rec_mean <= 3.5:
-            rating_str = "Hold"
+            rating_str = "HOLD"
         elif rec_mean <= 4.5:
-            rating_str = "Underperform"
+            rating_str = "UNDERPERFORM"
         else:
-            rating_str = "Sell"
+            rating_str = "SELL"
     elif is_index:
         rating_str = "Index Basket"
         rating_score = 65.0
@@ -759,29 +814,33 @@ def build_institutional_intelligence(
     rev_growth = info.get("revenueGrowth")
     if rev_growth is not None and np.isfinite(rev_growth):
         rev_growth_val = round(float(rev_growth) * 100.0, 2)
-        rev_forecast = "Up" if rev_growth_val >= 0 else "Down"
+        rev_forecast = "↑ Growing" if rev_growth_val > 1.0 else ("↓ Declining" if rev_growth_val < -1.0 else "→ Stable")
+        rev_period = "YoY Trailing"
     else:
-        rev_forecast = "N/A" if is_index else "Stable"
+        rev_forecast = "N/A" if is_index else "→ Stable"
+        rev_period = "Next quarter"
         rev_growth_val = None
 
     # 4. Valuation / P/S Trailing 12 Months
     ps_raw = info.get("priceToSalesTrailing12Months")
     if ps_raw and np.isfinite(ps_raw) and ps_raw > 0:
         ps_ratio = round(float(ps_raw), 2)
-        val_label = "Low" if ps_ratio < 3.0 else ("Fair" if ps_ratio < 8.0 else "High")
+        val_label = "Low P/S" if ps_ratio < 3.0 else ("Fair P/S" if ps_ratio < 8.0 else "High P/S")
     else:
         ps_ratio = None
         val_label = "N/A"
 
-    # 5. Trading Volume Status (computed from live volume ratio vs 20-day rolling MA)
+    # 5. Trading Volume Status & Absolute Volume
     vol_rat = round(float(volume_ratio), 2) if np.isfinite(volume_ratio) else 1.0
     vol_status = "High" if vol_rat >= 1.25 else ("Low" if vol_rat < 0.8 else "Normal")
+    vol_int = live_volume or int(info.get("regularMarketVolume") or info.get("volume") or 0)
+    vol_str = _format_volume_shares(vol_int) if vol_int > 0 else "N/A"
 
     # 6. Profitability / Gross & Operating Margins
     gross_raw = info.get("grossMargins")
     if gross_raw and np.isfinite(gross_raw) and gross_raw > 0:
         gross_pct = round(float(gross_raw) * 100.0, 2)
-        prof_label = "High" if gross_pct >= 40.0 else ("Moderate" if gross_pct >= 20.0 else "Low")
+        prof_label = "High Gross Margin" if gross_pct >= 40.0 else ("Moderate Gross Margin" if gross_pct >= 20.0 else "Low Gross Margin")
     else:
         gross_pct = None
         prof_label = "N/A"
@@ -797,15 +856,20 @@ def build_institutional_intelligence(
         target_high=target_high,
         target_low=target_low,
         target_currency=target_curr,
+        currency_symbol=curr_sym,
         revenue_forecast=rev_forecast,
+        revenue_period=rev_period,
         revenue_growth_pct=rev_growth_val,
         valuation_label=val_label,
         ps_ratio=ps_ratio,
+        trading_volume=vol_int if vol_int > 0 else None,
+        trading_volume_str=vol_str,
         volume_status=vol_status,
         volume_ratio=vol_rat,
         profitability_label=prof_label,
         gross_margin_pct=gross_pct,
         operating_margin_pct=op_pct,
+        provider="Live Feed",
     )
 
 

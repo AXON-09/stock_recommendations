@@ -228,31 +228,36 @@ function renderInstitutionalIntelligence(data) {
   }
   section.classList.remove('hidden');
 
-  const isIndex = data.ticker.startsWith('^') || (data.market && (data.market.is_etf || data.market.exchange === 'INDEX'));
+  const isIndia = data.market ? data.market.is_india : (data.ticker.endsWith('.NS') || data.ticker.endsWith('.BO'));
+  const currSym = isIndia ? '₹' : '$';
+  const currCode = isIndia ? 'INR' : 'USD';
 
-  // 1. Analyst Consensus / Market Bias
+  // 1. Analyst Consensus
   const ratingEl = document.getElementById('inst-analyst-rating');
   const countEl = document.getElementById('inst-analyst-count');
   const needleEl = document.getElementById('inst-gauge-needle');
   const pathEl = document.getElementById('inst-gauge-path');
 
   if (ratingEl) {
-    ratingEl.textContent = inst.analyst_rating;
-    const rLower = inst.analyst_rating.toLowerCase();
-    ratingEl.className = 'inst-val-highlight ' + (
-      rLower.includes('buy') ? 'green' : 
-      (rLower.includes('sell') || rLower.includes('underperform') ? 'red' : (rLower.includes('index') ? 'cyan' : 'amber'))
-    );
+    const rawRating = (inst.analyst_rating || 'Not Covered').toUpperCase();
+    ratingEl.textContent = rawRating;
+    if (rawRating.includes('BUY')) {
+      ratingEl.className = 'inst-val-highlight green';
+    } else if (rawRating.includes('SELL') || rawRating.includes('UNDERPERFORM')) {
+      ratingEl.className = 'inst-val-highlight red';
+    } else if (rawRating.includes('HOLD')) {
+      ratingEl.className = 'inst-val-highlight amber';
+    } else {
+      ratingEl.className = 'inst-val-highlight cyan';
+    }
   }
   if (countEl) {
-    countEl.textContent = inst.analyst_count > 0 
-      ? `${inst.analyst_count} analysts` 
-      : (isIndex ? 'Market Index' : 'Quantitative Consensus');
+    countEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts` : '0 analysts';
   }
 
   // Calculate needle angle (-70deg to +70deg from score 0-100)
   if (needleEl) {
-    const score = inst.analyst_score || 50;
+    const score = inst.analyst_score !== undefined ? inst.analyst_score : 50;
     const angle = ((score / 100) * 140) - 70;
     const rad = (angle - 90) * (Math.PI / 180);
     const x2 = (27 + 18 * Math.cos(rad)).toFixed(1);
@@ -264,19 +269,20 @@ function renderInstitutionalIntelligence(data) {
     }
   }
 
-  // 2. Target Price / 52W Range
+  // 2. Target Price
   const targetPriceEl = document.getElementById('inst-target-price');
   const targetCountEl = document.getElementById('inst-target-analysts');
   if (targetPriceEl) {
-    if (inst.target_price) {
-      targetPriceEl.innerHTML = `${inst.target_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="inst-curr">${inst.target_currency || (data.market?.is_india ? 'INR' : 'USD')}</span>`;
-      if (targetCountEl) targetCountEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts` : '12M Target';
-    } else if (inst.target_high) {
-      targetPriceEl.innerHTML = `${inst.target_high.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="inst-curr">52W High</span>`;
-      if (targetCountEl) targetCountEl.textContent = inst.target_low ? `52W Low: ${inst.target_low.toLocaleString('en-US', {maximumFractionDigits: 2})}` : '52-Week Range';
+    if (inst.target_price !== null && inst.target_price !== undefined && inst.target_price > 0) {
+      targetPriceEl.innerHTML = `${currSym}${inst.target_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="inst-curr">${currCode}</span>`;
+      if (targetCountEl) {
+        targetCountEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts` : 'Target Price';
+      }
     } else {
       targetPriceEl.textContent = 'N/A';
-      if (targetCountEl) targetCountEl.textContent = 'Target Price';
+      if (targetCountEl) {
+        targetCountEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts` : 'Coverage unavailable';
+      }
     }
   }
 
@@ -285,68 +291,77 @@ function renderInstitutionalIntelligence(data) {
   const revLabelEl = document.getElementById('inst-rev-label');
   const revSubEl = document.getElementById('inst-rev-sub');
   if (revLabelEl && revArrowEl) {
-    if (inst.revenue_forecast === 'Up') {
-      revArrowEl.textContent = '↗';
-      revLabelEl.textContent = 'Up';
+    const fcast = (inst.revenue_forecast || 'N/A');
+    if (fcast.includes('Growing') || fcast.includes('Up')) {
+      revArrowEl.textContent = '↑';
+      revLabelEl.textContent = 'Growing';
       revLabelEl.className = 'green';
-    } else if (inst.revenue_forecast === 'Down') {
-      revArrowEl.textContent = '↘';
-      revLabelEl.textContent = 'Down';
+    } else if (fcast.includes('Declining') || fcast.includes('Down')) {
+      revArrowEl.textContent = '↓';
+      revLabelEl.textContent = 'Declining';
       revLabelEl.className = 'red';
+    } else if (fcast.includes('Stable')) {
+      revArrowEl.textContent = '→';
+      revLabelEl.textContent = 'Stable';
+      revLabelEl.className = 'cyan';
     } else {
       revArrowEl.textContent = '●';
-      revLabelEl.textContent = isIndex ? 'Basket' : (inst.revenue_forecast || 'Stable');
+      revLabelEl.textContent = 'N/A';
       revLabelEl.className = 'cyan';
     }
   }
   if (revSubEl) {
-    revSubEl.textContent = inst.revenue_growth_pct != null 
-      ? `${inst.revenue_growth_pct > 0 ? '+' : ''}${inst.revenue_growth_pct}% YoY Growth`
-      : 'Next quarter';
+    if (inst.revenue_growth_pct !== null && inst.revenue_growth_pct !== undefined) {
+      revSubEl.textContent = `${inst.revenue_growth_pct > 0 ? '+' : ''}${inst.revenue_growth_pct}% (${inst.revenue_period || 'Next quarter'})`;
+    } else {
+      revSubEl.textContent = inst.revenue_period || 'Next quarter';
+    }
   }
 
-  // 4. Financials Valuation (P/S)
+  // 4. Financials P/S Valuation
   const psBadgeEl = document.getElementById('inst-ps-badge');
   const psValEl = document.getElementById('inst-ps-val');
   if (psBadgeEl) {
-    if (inst.ps_ratio != null) {
-      const isLow = inst.valuation_label === 'Low';
-      psBadgeEl.innerHTML = `${inst.valuation_label} <span class="inst-subtag-pill">P/S</span>`;
-      psBadgeEl.className = 'inst-val-badge ' + (isLow ? 'green' : (inst.valuation_label === 'High' ? 'red' : 'cyan'));
+    if (inst.ps_ratio !== null && inst.ps_ratio !== undefined) {
+      const isLow = (inst.valuation_label || '').toLowerCase().includes('low');
+      const isHigh = (inst.valuation_label || '').toLowerCase().includes('high');
+      psBadgeEl.textContent = inst.valuation_label || 'Fair P/S';
+      psBadgeEl.className = 'inst-val-badge ' + (isLow ? 'green' : (isHigh ? 'red' : 'cyan'));
     } else {
-      psBadgeEl.innerHTML = `Market <span class="inst-subtag-pill">Valuation</span>`;
+      psBadgeEl.textContent = 'N/A';
       psBadgeEl.className = 'inst-val-badge cyan';
     }
   }
   if (psValEl) {
-    psValEl.textContent = inst.ps_ratio != null ? `${inst.ps_ratio} x` : 'N/A';
+    psValEl.textContent = (inst.ps_ratio !== null && inst.ps_ratio !== undefined) ? `${inst.ps_ratio} x` : 'N/A';
   }
 
   // 5. Trading Volume
-  const volBadgeEl = document.getElementById('inst-vol-badge');
   const volValEl = document.getElementById('inst-vol-val');
-  if (volBadgeEl) {
-    volBadgeEl.textContent = inst.volume_status;
-    volBadgeEl.className = 'inst-val-badge ' + (inst.volume_status === 'High' ? 'green' : (inst.volume_status === 'Low' ? 'red' : 'cyan'));
-  }
+  const volSubEl = document.getElementById('inst-vol-sub');
   if (volValEl) {
-    volValEl.textContent = `${inst.volume_ratio} x`;
+    volValEl.textContent = inst.trading_volume_str || (inst.trading_volume ? inst.trading_volume.toLocaleString('en-US') + ' shares' : 'N/A');
+  }
+  if (volSubEl) {
+    volSubEl.textContent = `Relative Volume: ${inst.volume_ratio}x (${inst.volume_status || 'Normal'})`;
   }
 
-  // 6. Profitability Margins
+  // 6. Profitability Gross Margin
   const profBadgeEl = document.getElementById('inst-prof-badge');
   const profValEl = document.getElementById('inst-prof-val');
   if (profBadgeEl) {
-    if (inst.gross_margin_pct != null) {
-      profBadgeEl.innerHTML = `${inst.profitability_label} <span class="inst-subtag-pill">Gross Margin</span>`;
-      profBadgeEl.className = 'inst-val-badge ' + (inst.profitability_label === 'High' ? 'green' : 'cyan');
+    if (inst.gross_margin_pct !== null && inst.gross_margin_pct !== undefined) {
+      profBadgeEl.textContent = inst.profitability_label || 'Gross Margin';
+      profBadgeEl.className = 'inst-val-badge ' + (
+        (inst.profitability_label || '').toLowerCase().includes('high') ? 'green' : 'cyan'
+      );
     } else {
-      profBadgeEl.innerHTML = `Broad <span class="inst-subtag-pill">Margin</span>`;
+      profBadgeEl.textContent = 'N/A';
       profBadgeEl.className = 'inst-val-badge cyan';
     }
   }
   if (profValEl) {
-    profValEl.textContent = inst.gross_margin_pct != null ? `${inst.gross_margin_pct} %` : 'N/A';
+    profValEl.textContent = (inst.gross_margin_pct !== null && inst.gross_margin_pct !== undefined) ? `${inst.gross_margin_pct} %` : 'N/A';
   }
 }
 

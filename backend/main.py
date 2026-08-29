@@ -285,20 +285,27 @@ class BenchmarkResponse(BaseModel):
 
 
 class InstitutionalIntelligenceModel(BaseModel):
-    analyst_rating: str = Field("Buy", description="Consensus analyst rating")
+    analyst_rating: str = Field("BUY", description="Consensus analyst rating")
     analyst_score: float = Field(75.0, description="0-100 gauge score for speedometer")
     analyst_count: int = Field(0, description="Number of analysts covering the stock")
     target_price: Optional[float] = Field(None, description="Consensus 12M price target")
-    target_currency: str = Field("INR", description="Currency symbol/code")
-    revenue_forecast: str = Field("Stable", description="Up | Down | Stable")
+    target_high: Optional[float] = Field(None, description="High price target or 52W High")
+    target_low: Optional[float] = Field(None, description="Low price target or 52W Low")
+    target_currency: str = Field("INR", description="Currency code (INR or USD)")
+    currency_symbol: str = Field("₹", description="Currency symbol (₹ or $)")
+    revenue_forecast: str = Field("→ Stable", description="↑ Growing | → Stable | ↓ Declining | N/A")
+    revenue_period: str = Field("Next quarter", description="Forecast period e.g. Next quarter / YoY Trailing")
     revenue_growth_pct: Optional[float] = Field(None, description="YoY or QoQ revenue growth %")
-    valuation_label: str = Field("Fair", description="Low | Fair | High")
+    valuation_label: str = Field("Fair P/S", description="Low P/S | Fair P/S | High P/S | N/A")
     ps_ratio: Optional[float] = Field(None, description="Price to Sales ratio")
+    trading_volume: Optional[int] = Field(None, description="Latest trading volume in shares")
+    trading_volume_str: str = Field("N/A", description="Formatted volume e.g. 12.4M shares")
     volume_status: str = Field("Normal", description="High | Normal | Low")
     volume_ratio: float = Field(1.0, description="Volume vs 20-day average")
-    profitability_label: str = Field("Moderate", description="High | Moderate | Low")
+    profitability_label: str = Field("Moderate Gross Margin", description="High Gross Margin | Moderate Gross Margin | Low Gross Margin | N/A")
     gross_margin_pct: Optional[float] = Field(None, description="Gross Margin %")
     operating_margin_pct: Optional[float] = Field(None, description="Operating Margin %")
+    provider: str = Field("Twelve Data", description="Data provider")
 
 
 class TickerNewsStoryModel(BaseModel):
@@ -540,24 +547,32 @@ def get_recommendation(
         inst_intel = build_institutional_intelligence(
             info=raw_info,
             price=features.price,
-            volume_ratio=features.rolling_std_20 * np.sqrt(20),  # volume ratio / dynamic factor
+            volume_ratio=features.volume_ratio,
             market=features.market,
+            ticker=resolved,
         )
         inst_model = InstitutionalIntelligenceModel(
             analyst_rating=inst_intel.analyst_rating,
             analyst_score=inst_intel.analyst_score,
             analyst_count=inst_intel.analyst_count,
             target_price=inst_intel.target_price,
+            target_high=inst_intel.target_high,
+            target_low=inst_intel.target_low,
             target_currency=inst_intel.target_currency,
+            currency_symbol=inst_intel.currency_symbol,
             revenue_forecast=inst_intel.revenue_forecast,
+            revenue_period=inst_intel.revenue_period,
             revenue_growth_pct=inst_intel.revenue_growth_pct,
             valuation_label=inst_intel.valuation_label,
             ps_ratio=inst_intel.ps_ratio,
+            trading_volume=inst_intel.trading_volume,
+            trading_volume_str=inst_intel.trading_volume_str,
             volume_status=inst_intel.volume_status,
             volume_ratio=inst_intel.volume_ratio,
             profitability_label=inst_intel.profitability_label,
             gross_margin_pct=inst_intel.gross_margin_pct,
             operating_margin_pct=inst_intel.operating_margin_pct,
+            provider=inst_intel.provider,
         )
     except Exception as exc:
         log.warning("[%s] Failed to build institutional intelligence: %s", resolved, exc)
