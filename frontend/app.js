@@ -316,10 +316,20 @@ function renderSignals(data) {
   };
 
   const signals = data.signals;
+  const isEtf = data.valuation?.is_etf || data.market?.is_etf;
+
   Object.entries(LABELS).forEach(([key, label]) => {
-    const val      = signals[key] || 'unavailable';
-    const cssClass = SIG_CLASS[val] || 'sig-unavailable';
-    const dispVal  = val === 'not_applicable' ? 'N/A' : (val.charAt(0).toUpperCase() + val.slice(1).replace(/_/g, ' '));
+    let val      = signals[key] || 'unavailable';
+    let cssClass = SIG_CLASS[val] || 'sig-unavailable';
+    let dispVal  = val === 'not_applicable' ? 'Not Applicable (ETF)' : (val.charAt(0).toUpperCase() + val.slice(1).replace(/_/g, ' '));
+    
+    if (key === 'valuation' && isEtf) {
+      dispVal = 'Not Applicable (ETF)';
+      cssClass = 'sig-neutral';
+    } else if (val === 'unavailable') {
+      dispVal = 'Not Available';
+    }
+
     const row = document.createElement('div');
     row.className = 'signal-row';
     row.innerHTML = `
@@ -352,7 +362,7 @@ function renderRegime(data) {
   document.getElementById('stat-di').textContent    = `${num(r.adx_pos)} / ${num(r.adx_neg)}`;
   document.getElementById('stat-slope').textContent = r.sma200_slope != null
     ? `${r.sma200_slope > 0 ? '+' : ''}${(r.sma200_slope * 100).toFixed(3)}%`
-    : 'N/A';
+    : 'Not Available';
   document.getElementById('stat-shrink').textContent =
     r.name === 'choppy' ? '55% toward 0.5' : '—';
 }
@@ -378,19 +388,17 @@ function renderValuation(data) {
   const relEl = document.getElementById('per-val');
   const peerLbl = document.getElementById('val-peer-label');
 
-  if (val.is_etf || val.signal === 'not_applicable') {
-    // Do not force stock valuation metrics onto ETFs — show N/A on every
-    // row plus an explanation, rather than hiding the card entirely.
-    peEl.textContent  = 'Not applicable for ETFs';
-    speEl.textContent = 'Not applicable for ETFs';
-    relEl.textContent = 'Not applicable for ETFs';
+  if (val.is_etf || mkt.is_etf || val.signal === 'not_applicable') {
+    peEl.textContent  = 'Fund / ETF';
+    speEl.textContent = 'Fund / ETF';
+    relEl.textContent = 'Not Applicable';
     peEl.style.color = speEl.style.color = relEl.style.color = 'var(--text-3)';
-    peerLbl.textContent = val.note || 'Valuation metrics are not meaningful for a fund holding a basket of assets.';
+    peerLbl.textContent = val.note || 'ETFs and index funds hold a basket of assets rather than a single stock P/E.';
     return;
   }
 
-  peEl.textContent  = val.pe_ratio  != null ? num(val.pe_ratio,  1) : 'N/A';
-  speEl.textContent = val.peer_pe   != null ? num(val.peer_pe,   1) : 'N/A';
+  peEl.textContent  = val.pe_ratio  != null ? num(val.pe_ratio,  1) : 'Not Available';
+  speEl.textContent = val.peer_pe   != null ? num(val.peer_pe,   1) : 'Not Available';
   peEl.style.color = speEl.style.color = 'var(--text-1)';
 
   if (val.pe_relative_pct != null) {
@@ -400,8 +408,8 @@ function renderValuation(data) {
                       : val.pe_relative_pct < -15 ? 'var(--green)'
                       : 'var(--text-2)';
   } else {
-    relEl.textContent = 'N/A';
-    relEl.style.color = 'var(--text-2)';
+    relEl.textContent = 'Not Available';
+    relEl.style.color = 'var(--text-3)';
   }
 
   // Peer label — shows India peers vs US ETF
@@ -409,6 +417,7 @@ function renderValuation(data) {
     ? 'Peer Median P/E uses curated Indian sector peers (see market.py).'
     : 'Peer Median P/E approximated from US sector ETF (e.g. XLK for Technology).';
 }
+
 
 function renderBacktest(data) {
   const bt = data.backtest;
@@ -568,9 +577,10 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
           <td style="color: var(--red);">${num(s.max_drawdown, 2)}%</td>
           <td>${num(s.volatility, 2)}%</td>
           <td>${s.trades}</td>
-          <td>${s.win_rate != null ? `${num(s.win_rate, 1)}%` : '—'}</td>
+          <td>${s.name === 'Buy & Hold' ? 'N/A (Holding)' : (s.win_rate != null ? `${num(s.win_rate, 1)}%` : '—')}</td>
         `;
         tableBody.appendChild(tr);
+
       });
     }
 
@@ -589,13 +599,16 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
         const card = document.createElement('div');
         card.className = 'cost-pill';
         card.innerHTML = `
-          <div class="cost-pill-fee">Fee: ${cs.cost_label}</div>
+          <div class="cost-pill-fee">Fee: ${cs.cost_label} <button class="info-btn" data-info="cost_sensitivity" aria-label="What is ${cs.cost_label} fee?">ⓘ</button></div>
           <div class="cost-pill-ret" style="color: ${col};">${sign}${num(cs.total_return, 2)}%</div>
           <div class="cost-pill-sharpe">Sharpe: ${num(cs.sharpe, 2)} · MaxDD: ${num(cs.max_drawdown, 1)}%</div>
         `;
         scenariosGrid.appendChild(card);
       });
     }
+
+    const bmCard = document.getElementById('benchmark-card');
+    if (bmCard && window.QV_initInfoIcons) window.QV_initInfoIcons(bmCard);
   } catch (err) {
     console.error('Benchmark fetch error:', err);
     if (tableBody) {
@@ -603,6 +616,7 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
     }
   }
 }
+
 
 // ── Groww-Style Stock Price Chart ──────────────────────────────────────────────
 let _priceHistory     = [];

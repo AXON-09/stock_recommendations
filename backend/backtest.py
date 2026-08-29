@@ -209,14 +209,24 @@ def simulate_strategy(
     if max_dd_pct > 0.0:
         max_dd_pct = 0.0
 
-    # Win Rate for completed round-trip trades
-    if is_buy_and_hold or len(trade_returns) == 0:
+    # Win Rate calculation
+    if is_buy_and_hold:
         win_rate = None
     else:
-        winning_trades = sum(1 for r in trade_returns if r > 0)
-        win_rate = round((winning_trades / len(trade_returns)) * 100.0, 1)
+        all_eval_trades = list(trade_returns)
+        if len(all_eval_trades) == 0 and current_pos == 1 and entry_price > 0:
+            open_trade_ret = (float(prices.iloc[-1]) - entry_price) / entry_price
+            all_eval_trades.append(open_trade_ret)
+
+        if len(all_eval_trades) > 0:
+            winning_trades = sum(1 for r in all_eval_trades if r > 0)
+            win_rate = round((winning_trades / len(all_eval_trades)) * 100.0, 1)
+        else:
+            win_rate = None
 
     metrics = StrategyMetrics(
+
+
         name="",
         total_return=round(total_ret_pct, 2),
         cagr=round(cagr_pct, 2),

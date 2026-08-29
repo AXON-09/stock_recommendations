@@ -294,13 +294,14 @@
 
       <!-- Signal breakdown -->
       <div class="card glass">
-        <h2 class="card-title">SIGNAL BREAKDOWN</h2>
+        <h2 class="card-title">SIGNAL BREAKDOWN <button class="info-btn" data-info="signal_breakdown" aria-label="What is Signal Breakdown?">ⓘ</button></h2>
         <div id="signals-grid" class="signals-grid"></div>
       </div>
 
+
       <!-- Market regime -->
       <div class="card glass">
-        <h2 class="card-title">MARKET REGIME</h2>
+        <h2 class="card-title">MARKET REGIME <button class="info-btn" data-info="market_regime" aria-label="What is Market Regime?">ⓘ</button></h2>
         <div id="regime-badge" class="regime-badge">—</div>
         <div class="rs-bar-wrap">
           <div class="rs-bar-bg"><div id="rs-bar" class="rs-bar"></div></div>
@@ -320,7 +321,7 @@
 
       <!-- Volatility -->
       <div class="card glass">
-        <h2 class="card-title">VOLATILITY</h2>
+        <h2 class="card-title">VOLATILITY <button class="info-btn" data-info="volatility_card" aria-label="What is Volatility?">ⓘ</button></h2>
         <div class="stat-grid">
           <div class="stat-row"><span class="stat-lbl">Annualised Vol <button class="info-btn" data-info="ann_vol" aria-label="What is Annualised Volatility?">ⓘ</button></span>   <span id="stat-annvol"  class="stat-val">—</span></div>
           <div class="stat-row"><span class="stat-lbl">ATR <button class="info-btn" data-info="atr" aria-label="What is ATR?">ⓘ</button></span>              <span id="stat-atr"     class="stat-val">—</span></div>
@@ -349,7 +350,7 @@
     <!-- Strategy Benchmark Comparison -->
     <div class="card glass" id="benchmark-card">
       <div class="card-header-flex">
-        <h2 class="card-title">STRATEGY BENCHMARK COMPARISON</h2>
+        <h2 class="card-title">STRATEGY BENCHMARK COMPARISON <button class="info-btn" data-info="benchmark_section" aria-label="What is Strategy Benchmark Comparison?">ⓘ</button></h2>
         <span id="benchmark-period-label" class="card-subtag">Identical period · $100k capital · 0.10% fee · 0.05% slippage</span>
       </div>
       
@@ -358,14 +359,14 @@
         <table class="benchmark-table">
           <thead>
             <tr>
-              <th>Strategy</th>
-              <th>Total Return</th>
-              <th>CAGR</th>
-              <th>Sharpe Ratio</th>
-              <th>Max Drawdown</th>
-              <th>Volatility</th>
-              <th>Trades</th>
-              <th>Win Rate</th>
+              <th>Strategy <button class="info-btn" data-info="strat_comparison" aria-label="What are the strategies?">ⓘ</button></th>
+              <th>Total Return <button class="info-btn" data-info="total_return" aria-label="What is Total Return?">ⓘ</button></th>
+              <th>CAGR <button class="info-btn" data-info="cagr" aria-label="What is CAGR?">ⓘ</button></th>
+              <th>Sharpe Ratio <button class="info-btn" data-info="sharpe_ratio" aria-label="What is Sharpe Ratio?">ⓘ</button></th>
+              <th>Max Drawdown <button class="info-btn" data-info="max_drawdown" aria-label="What is Max Drawdown?">ⓘ</button></th>
+              <th>Volatility <button class="info-btn" data-info="strategy_volatility" aria-label="What is Strategy Volatility?">ⓘ</button></th>
+              <th>Trades <button class="info-btn" data-info="trades_count" aria-label="What are Trades?">ⓘ</button></th>
+              <th>Win Rate <button class="info-btn" data-info="win_rate" aria-label="What is Win Rate?">ⓘ</button></th>
             </tr>
           </thead>
           <tbody id="benchmark-table-body">
@@ -376,7 +377,7 @@
 
       <!-- Equity Curve Visual with Interactive Crosshair -->
       <div class="chart-container">
-        <h3 class="chart-title">Synchronized Portfolio Equity Curves (<span id="equity-currency-sym">$</span>)</h3>
+        <h3 class="chart-title">Synchronized Portfolio Equity Curves (<span id="equity-currency-sym">$</span>) <button class="info-btn" data-info="equity_curves" aria-label="What are Equity Curves?">ⓘ</button></h3>
         <div class="chart-legend">
           <span class="legend-item"><span class="legend-dot dot-qv"></span> QuantView</span>
           <span class="legend-item"><span class="legend-dot dot-bh"></span> Buy &amp; Hold</span>
@@ -409,14 +410,14 @@
 
       <!-- Transaction Cost Sensitivity -->
       <div class="cost-sensitivity-section">
-        <h3 class="chart-title">QuantView Transaction Cost Sensitivity</h3>
+        <h3 class="chart-title">QuantView Transaction Cost Sensitivity <button class="info-btn" data-info="cost_sensitivity" aria-label="What is Transaction Cost Sensitivity?">ⓘ</button></h3>
         <div class="cost-pills-grid" id="cost-scenarios-grid"></div>
       </div>
     </div>
 
     <!-- Backtest -->
     <div class="card glass">
-      <h2 class="card-title">WALK-FORWARD BACKTEST</h2>
+      <h2 class="card-title">WALK-FORWARD BACKTEST <button class="info-btn" data-info="backtest_section" aria-label="What is Walk-Forward Backtest?">ⓘ</button></h2>
       <p class="bt-subtitle">T+20 horizon · Purge/embargo prevents leakage · Out-of-fold predictions</p>
       <div id="bt-grid" class="bt-grid"></div>
       <details class="bt-details">
@@ -424,6 +425,7 @@
         <div id="bt-advanced-grid" class="bt-grid bt-advanced"></div>
       </details>
     </div>
+
 
 
     <!-- Disclaimer -->
