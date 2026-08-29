@@ -705,64 +705,89 @@ def build_institutional_intelligence(
     volume_ratio: float,
     market: MarketInfo,
 ) -> InstitutionalIntelligence:
-    # 1. Analyst Consensus
-    raw_rec = str(info.get("recommendationKey", "buy") or "buy").lower().replace("_", " ")
-    rec_map = {
-        "strong buy": ("Strong Buy", 90.0),
-        "buy": ("Buy", 75.0),
-        "hold": ("Hold", 50.0),
-        "underperform": ("Underperform", 30.0),
-        "sell": ("Sell", 15.0),
-    }
-    rating_str, rating_score = rec_map.get(raw_rec, ("Buy", 70.0))
-    analyst_count = int(info.get("numberOfAnalystOpinions") or 0)
-    if analyst_count == 0:
-        analyst_count = 38 if market.is_india else 45
+    quote_type = str(info.get("quoteType", "")).upper()
+    is_index = quote_type in {"INDEX", "ETF", "MUTUALFUND"} or market.is_etf
 
-    # 2. Target Price
+    # 1. Analyst Consensus (Authentic YFinance metadata)
+    raw_rec = info.get("recommendationKey")
+    rec_mean = info.get("recommendationMean")
+    
+    if raw_rec and str(raw_rec).lower() != "none":
+        rec_clean = str(raw_rec).lower().replace("_", " ")
+        rec_map = {
+            "strong buy": ("Strong Buy", 90.0),
+            "buy": ("Buy", 75.0),
+            "hold": ("Hold", 50.0),
+            "underperform": ("Underperform", 30.0),
+            "sell": ("Sell", 15.0),
+        }
+        rating_str, rating_score = rec_map.get(rec_clean, ("Buy", 70.0))
+    elif rec_mean is not None and np.isfinite(rec_mean) and rec_mean > 0:
+        score = max(0.0, min(100.0, float((5.0 - rec_mean) / 4.0 * 100.0)))
+        rating_score = round(score, 1)
+        if rec_mean <= 1.5:
+            rating_str = "Strong Buy"
+        elif rec_mean <= 2.5:
+            rating_str = "Buy"
+        elif rec_mean <= 3.5:
+            rating_str = "Hold"
+        elif rec_mean <= 4.5:
+            rating_str = "Underperform"
+        else:
+            rating_str = "Sell"
+    elif is_index:
+        rating_str = "Index Basket"
+        rating_score = 65.0
+    else:
+        rating_str = "Not Covered"
+        rating_score = 50.0
+
+    analyst_count = int(info.get("numberOfAnalystOpinions") or 0)
+
+    # 2. Target Price (12-Month Consensus from Wall Street / Dalal Street)
     target_raw = info.get("targetMeanPrice") or info.get("targetMedianPrice")
     if target_raw and np.isfinite(target_raw) and target_raw > 0:
-        target_price = float(target_raw)
+        target_price = round(float(target_raw), 2)
     else:
-        # Realistic consensus target (+8.5% default upside if unlisted)
-        target_price = round(price * 1.085, 2)
+        target_price = None
 
-    target_high = float(info["targetHighPrice"]) if info.get("targetHighPrice") else round(target_price * 1.15, 2)
-    target_low = float(info["targetLowPrice"]) if info.get("targetLowPrice") else round(target_price * 0.88, 2)
-    target_curr = "INR" if market.is_india else "USD"
+    target_high = float(info["targetHighPrice"]) if (info.get("targetHighPrice") and np.isfinite(info["targetHighPrice"])) else (float(info["fiftyTwoWeekHigh"]) if (info.get("fiftyTwoWeekHigh") and np.isfinite(info["fiftyTwoWeekHigh"])) else None)
+    target_low = float(info["targetLowPrice"]) if (info.get("targetLowPrice") and np.isfinite(info["targetLowPrice"])) else (float(info["fiftyTwoWeekLow"]) if (info.get("fiftyTwoWeekLow") and np.isfinite(info["fiftyTwoWeekLow"])) else None)
+    target_curr = info.get("financialCurrency") or info.get("currency") or ("INR" if market.is_india else "USD")
 
-    # 3. Revenue Forecast
+    # 3. Revenue Forecast & YoY Growth
     rev_growth = info.get("revenueGrowth")
     if rev_growth is not None and np.isfinite(rev_growth):
-        rev_growth_val = float(rev_growth) * 100.0
+        rev_growth_val = round(float(rev_growth) * 100.0, 2)
         rev_forecast = "Up" if rev_growth_val >= 0 else "Down"
     else:
-        rev_forecast = "Up" if rating_score >= 50 else "Down"
-        rev_growth_val = 12.4 if rev_forecast == "Up" else -3.2
+        rev_forecast = "N/A" if is_index else "Stable"
+        rev_growth_val = None
 
-    # 4. Valuation / P/S
+    # 4. Valuation / P/S Trailing 12 Months
     ps_raw = info.get("priceToSalesTrailing12Months")
     if ps_raw and np.isfinite(ps_raw) and ps_raw > 0:
         ps_ratio = round(float(ps_raw), 2)
+        val_label = "Low" if ps_ratio < 3.0 else ("Fair" if ps_ratio < 8.0 else "High")
     else:
-        ps_ratio = 3.07 if market.is_india else 4.25
+        ps_ratio = None
+        val_label = "N/A"
 
-    val_label = "Low" if ps_ratio < 4.0 else ("Fair" if ps_ratio < 10.0 else "High")
-
-    # 5. Trading Volume Status
+    # 5. Trading Volume Status (computed from live volume ratio vs 20-day rolling MA)
     vol_rat = round(float(volume_ratio), 2) if np.isfinite(volume_ratio) else 1.0
     vol_status = "High" if vol_rat >= 1.25 else ("Low" if vol_rat < 0.8 else "Normal")
 
-    # 6. Profitability / Margins
+    # 6. Profitability / Gross & Operating Margins
     gross_raw = info.get("grossMargins")
     if gross_raw and np.isfinite(gross_raw) and gross_raw > 0:
         gross_pct = round(float(gross_raw) * 100.0, 2)
+        prof_label = "High" if gross_pct >= 40.0 else ("Moderate" if gross_pct >= 20.0 else "Low")
     else:
-        gross_pct = 48.50 if market.is_india else 58.20
+        gross_pct = None
+        prof_label = "N/A"
 
     op_raw = info.get("operatingMargins")
-    op_pct = round(float(op_raw) * 100.0, 2) if op_raw and np.isfinite(op_raw) else 24.50
-    prof_label = "High" if gross_pct >= 40.0 else ("Moderate" if gross_pct >= 20.0 else "Low")
+    op_pct = round(float(op_raw) * 100.0, 2) if (op_raw and np.isfinite(op_raw)) else None
 
     return InstitutionalIntelligence(
         analyst_rating=rating_str,
@@ -773,7 +798,7 @@ def build_institutional_intelligence(
         target_low=target_low,
         target_currency=target_curr,
         revenue_forecast=rev_forecast,
-        revenue_growth_pct=round(rev_growth_val, 2),
+        revenue_growth_pct=rev_growth_val,
         valuation_label=val_label,
         ps_ratio=ps_ratio,
         volume_status=vol_status,

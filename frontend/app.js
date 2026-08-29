@@ -228,7 +228,9 @@ function renderInstitutionalIntelligence(data) {
   }
   section.classList.remove('hidden');
 
-  // 1. Analyst Consensus
+  const isIndex = data.ticker.startsWith('^') || (data.market && (data.market.is_etf || data.market.exchange === 'INDEX'));
+
+  // 1. Analyst Consensus / Market Bias
   const ratingEl = document.getElementById('inst-analyst-rating');
   const countEl = document.getElementById('inst-analyst-count');
   const needleEl = document.getElementById('inst-gauge-needle');
@@ -236,16 +238,21 @@ function renderInstitutionalIntelligence(data) {
 
   if (ratingEl) {
     ratingEl.textContent = inst.analyst_rating;
+    const rLower = inst.analyst_rating.toLowerCase();
     ratingEl.className = 'inst-val-highlight ' + (
-      inst.analyst_rating.toLowerCase().includes('buy') ? 'green' : 
-      (inst.analyst_rating.toLowerCase().includes('sell') ? 'red' : 'amber')
+      rLower.includes('buy') ? 'green' : 
+      (rLower.includes('sell') || rLower.includes('underperform') ? 'red' : (rLower.includes('index') ? 'cyan' : 'amber'))
     );
   }
-  if (countEl) countEl.textContent = `${inst.analyst_count} analysts`;
+  if (countEl) {
+    countEl.textContent = inst.analyst_count > 0 
+      ? `${inst.analyst_count} analysts` 
+      : (isIndex ? 'Market Index' : 'Quantitative Consensus');
+  }
 
   // Calculate needle angle (-70deg to +70deg from score 0-100)
   if (needleEl) {
-    const score = inst.analyst_score || 75;
+    const score = inst.analyst_score || 50;
     const angle = ((score / 100) * 140) - 70;
     const rad = (angle - 90) * (Math.PI / 180);
     const x2 = (27 + 18 * Math.cos(rad)).toFixed(1);
@@ -257,35 +264,62 @@ function renderInstitutionalIntelligence(data) {
     }
   }
 
-  // 2. Target Price
+  // 2. Target Price / 52W Range
   const targetPriceEl = document.getElementById('inst-target-price');
-  const targetCurrEl = document.getElementById('inst-target-curr');
   const targetCountEl = document.getElementById('inst-target-analysts');
-  if (targetPriceEl && inst.target_price) {
-    targetPriceEl.innerHTML = `${inst.target_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="inst-curr" id="inst-target-curr">${inst.target_currency || 'INR'}</span>`;
+  if (targetPriceEl) {
+    if (inst.target_price) {
+      targetPriceEl.innerHTML = `${inst.target_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="inst-curr">${inst.target_currency || (data.market?.is_india ? 'INR' : 'USD')}</span>`;
+      if (targetCountEl) targetCountEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts` : '12M Target';
+    } else if (inst.target_high) {
+      targetPriceEl.innerHTML = `${inst.target_high.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="inst-curr">52W High</span>`;
+      if (targetCountEl) targetCountEl.textContent = inst.target_low ? `52W Low: ${inst.target_low.toLocaleString('en-US', {maximumFractionDigits: 2})}` : '52-Week Range';
+    } else {
+      targetPriceEl.textContent = 'N/A';
+      if (targetCountEl) targetCountEl.textContent = 'Target Price';
+    }
   }
-  if (targetCountEl) targetCountEl.textContent = `${inst.analyst_count} analysts`;
 
   // 3. Earnings Revenue Forecast
   const revArrowEl = document.getElementById('inst-rev-arrow');
   const revLabelEl = document.getElementById('inst-rev-label');
+  const revSubEl = document.getElementById('inst-rev-sub');
   if (revLabelEl && revArrowEl) {
-    const isUp = inst.revenue_forecast === 'Up';
-    revArrowEl.textContent = isUp ? '↗' : '↘';
-    revLabelEl.textContent = inst.revenue_forecast;
-    revLabelEl.className = isUp ? 'green' : 'red';
+    if (inst.revenue_forecast === 'Up') {
+      revArrowEl.textContent = '↗';
+      revLabelEl.textContent = 'Up';
+      revLabelEl.className = 'green';
+    } else if (inst.revenue_forecast === 'Down') {
+      revArrowEl.textContent = '↘';
+      revLabelEl.textContent = 'Down';
+      revLabelEl.className = 'red';
+    } else {
+      revArrowEl.textContent = '●';
+      revLabelEl.textContent = isIndex ? 'Basket' : (inst.revenue_forecast || 'Stable');
+      revLabelEl.className = 'cyan';
+    }
+  }
+  if (revSubEl) {
+    revSubEl.textContent = inst.revenue_growth_pct != null 
+      ? `${inst.revenue_growth_pct > 0 ? '+' : ''}${inst.revenue_growth_pct}% YoY Growth`
+      : 'Next quarter';
   }
 
   // 4. Financials Valuation (P/S)
   const psBadgeEl = document.getElementById('inst-ps-badge');
   const psValEl = document.getElementById('inst-ps-val');
   if (psBadgeEl) {
-    const isLow = inst.valuation_label === 'Low';
-    psBadgeEl.innerHTML = `${inst.valuation_label} <span class="inst-subtag-pill">P/S</span>`;
-    psBadgeEl.className = 'inst-val-badge ' + (isLow ? 'green' : (inst.valuation_label === 'High' ? 'red' : 'cyan'));
+    if (inst.ps_ratio != null) {
+      const isLow = inst.valuation_label === 'Low';
+      psBadgeEl.innerHTML = `${inst.valuation_label} <span class="inst-subtag-pill">P/S</span>`;
+      psBadgeEl.className = 'inst-val-badge ' + (isLow ? 'green' : (inst.valuation_label === 'High' ? 'red' : 'cyan'));
+    } else {
+      psBadgeEl.innerHTML = `Market <span class="inst-subtag-pill">Valuation</span>`;
+      psBadgeEl.className = 'inst-val-badge cyan';
+    }
   }
   if (psValEl) {
-    psValEl.textContent = inst.ps_ratio ? `${inst.ps_ratio} x` : '3.07 x';
+    psValEl.textContent = inst.ps_ratio != null ? `${inst.ps_ratio} x` : 'N/A';
   }
 
   // 5. Trading Volume
@@ -293,7 +327,7 @@ function renderInstitutionalIntelligence(data) {
   const volValEl = document.getElementById('inst-vol-val');
   if (volBadgeEl) {
     volBadgeEl.textContent = inst.volume_status;
-    volBadgeEl.className = 'inst-val-badge ' + (inst.volume_status === 'High' ? 'green' : 'cyan');
+    volBadgeEl.className = 'inst-val-badge ' + (inst.volume_status === 'High' ? 'green' : (inst.volume_status === 'Low' ? 'red' : 'cyan'));
   }
   if (volValEl) {
     volValEl.textContent = `${inst.volume_ratio} x`;
@@ -303,10 +337,16 @@ function renderInstitutionalIntelligence(data) {
   const profBadgeEl = document.getElementById('inst-prof-badge');
   const profValEl = document.getElementById('inst-prof-val');
   if (profBadgeEl) {
-    profBadgeEl.innerHTML = `${inst.profitability_label} <span class="inst-subtag-pill">Gross Margin</span>`;
+    if (inst.gross_margin_pct != null) {
+      profBadgeEl.innerHTML = `${inst.profitability_label} <span class="inst-subtag-pill">Gross Margin</span>`;
+      profBadgeEl.className = 'inst-val-badge ' + (inst.profitability_label === 'High' ? 'green' : 'cyan');
+    } else {
+      profBadgeEl.innerHTML = `Broad <span class="inst-subtag-pill">Margin</span>`;
+      profBadgeEl.className = 'inst-val-badge cyan';
+    }
   }
   if (profValEl) {
-    profValEl.textContent = inst.gross_margin_pct ? `${inst.gross_margin_pct} %` : '98.35 %';
+    profValEl.textContent = inst.gross_margin_pct != null ? `${inst.gross_margin_pct} %` : 'N/A';
   }
 }
 
