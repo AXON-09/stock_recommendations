@@ -55,7 +55,8 @@
 
     fetchLiveWatchlist: async function() {
       try {
-        var res = await fetch('/api/watchlist/live');
+        var base = (window.location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '');
+        var res = await fetch(base + '/api/watchlist/live');
         if (res.ok) {
           var data = await res.json();
           if (data && Array.isArray(data.items) && data.items.length === 10) {
@@ -70,6 +71,25 @@
         console.warn('[WatchlistService] Using cached watchlist data:', e);
       }
       return this.getWatchlist();
+    },
+
+    hasItem: function(ticker) {
+      if (!ticker) return false;
+      var items = this.getWatchlist();
+      var t = ticker.toUpperCase();
+      return items.some(function(i) { return (i.ticker || '').toUpperCase() === t; });
+    },
+
+    addItem: function(item) {
+      return true;
+    },
+
+    removeItem: function(ticker) {
+      return true;
+    },
+
+    toggleFavorite: function(ticker) {
+      return true;
     }
   };
 })(window);

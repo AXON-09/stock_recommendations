@@ -4,7 +4,8 @@
    All prices, ATR, etc. use currency from the API response.
 ============================================================================= */
 
-const API_BASE = '';   // same origin (served by FastAPI)
+const API_BASE = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8000' : '';
+window.QV_API_BASE = API_BASE;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const tickerInput  = document.getElementById('ticker-input');
@@ -123,6 +124,7 @@ function showLoading() {
   errorState.classList.add('hidden');
   resultPanel.classList.add('hidden');
   analyzeBtn.disabled = true;
+  loadingState.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   let secs = 0;
   loadingTimer.textContent = 'Elapsed: 0s';
@@ -233,6 +235,15 @@ function renderHero(data) {
     kpiRegime.textContent = `Regime: ${data.market_regime.regime || 'Active'}`;
   }
 
+  // Cache note
+  const cache = data.cache;
+  const cacheEl = document.getElementById('cache-note');
+  if (cache && cacheEl) {
+    cacheEl.textContent = cache.hit
+      ? `Cached · trained ${cache.trained_at ? new Date(cache.trained_at).toLocaleTimeString() : '—'} · data through ${cache.data_through || '—'}`
+      : `Fresh · data through ${cache.data_through || '—'}`;
+  }
+
   // Setup three-dot action menu & Watchlist button for active ticker
   setupHeroActions(data);
   syncHeroWatchlistButton(data);
@@ -315,17 +326,6 @@ function setupHeroActions(data) {
       dropdown.classList.add('hidden');
     };
   }
-}
-
-  // Cache note
-  const cache = data.cache;
-  const cacheEl = document.getElementById('cache-note');
-  if (cache) {
-    cacheEl.textContent = cache.hit
-      ? `Cached · trained ${cache.trained_at ? new Date(cache.trained_at).toLocaleTimeString() : '—'} · data through ${cache.data_through || '—'}`
-      : `Fresh · data through ${cache.data_through || '—'}`;
-  }
-
 }
 
 function renderConfidence(data) {
@@ -1255,14 +1255,22 @@ async function analyze(ticker) {
 
 // ── Event listeners ───────────────────────────────────────────────────────────
 analyzeBtn.addEventListener('click', () => {
-  const t = tickerInput.value.trim().toUpperCase();
-  if (t) analyze(t);
+  let t = tickerInput.value.trim().toUpperCase();
+  if (!t) {
+    t = 'RELIANCE';
+    tickerInput.value = t;
+  }
+  analyze(t);
 });
 
 tickerInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') {
-    const t = tickerInput.value.trim().toUpperCase();
-    if (t) analyze(t);
+    let t = tickerInput.value.trim().toUpperCase();
+    if (!t) {
+      t = 'RELIANCE';
+      tickerInput.value = t;
+    }
+    analyze(t);
   }
 });
 
@@ -1641,17 +1649,6 @@ function initNewsPortal() {
   }
 }
 
-// Global initialization
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    initWatchlistLogos();
-    initNewsPortal();
-  });
-} else {
-  initWatchlistLogos();
-  initNewsPortal();
-}
-
 
 // ── Live Watchlist (Top 10 Market Gainers & Movers with 5m Auto-Refresh) ──────
 async function renderLiveWatchlist(showSkeleton = false) {
@@ -1929,9 +1926,16 @@ function initSettingsModal() {
 }
 
 // Re-hook DOM load for full platform suite
-document.addEventListener('DOMContentLoaded', () => {
+function initPlatform() {
   renderLiveWatchlist();
+  initNewsPortal();
   initSearchAutocomplete();
   initNotificationCenter();
   initSettingsModal();
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initPlatform);
+} else {
+  initPlatform();
+}
