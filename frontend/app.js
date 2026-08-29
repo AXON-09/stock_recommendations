@@ -478,6 +478,23 @@ function renderExplanation(data) {
     0.05
   );
 
+  const FEAT_INFO_MAP = {
+    'rsi': 'rsi',
+    'adx': 'adx',
+    'adx_pos': 'adx_pos',
+    'adx_neg': 'adx_neg',
+    'macd_diff': 'macd',
+    'bb_pct': 'bb_pct',
+    'momentum_20d': 'momentum_20d',
+    'rolling_std_20': 'rolling_std_20',
+    'volume_ratio': 'volume_ratio',
+    'price_vs_sma50': 'price_vs_sma50',
+    'price_vs_sma200': 'price_vs_sma200',
+    'sma200_slope': 'sma200_slope',
+    'atr_pct': 'atr_pct',
+    'regime_code': 'regime_code',
+  };
+
   function renderList(targetEl, items, isPos) {
     if (!items || items.length === 0) {
       targetEl.innerHTML = `<p class="shap-empty-note">No significant ${isPos ? 'positive' : 'negative'} factors.</p>`;
@@ -487,11 +504,12 @@ function renderExplanation(data) {
     items.forEach(item => {
       const barPct = Math.min(100, Math.round((Math.abs(item.shap_value) / maxAbs) * 100));
       const sign = item.shap_value > 0 ? '+' : '';
+      const infoKey = FEAT_INFO_MAP[item.feature] || item.feature;
       const row = document.createElement('div');
       row.className = 'shap-item';
       row.innerHTML = `
         <div class="shap-item-top">
-          <span class="shap-feat-name">${item.display_name}</span>
+          <span class="shap-feat-name">${item.display_name} <button class="info-btn" data-info="${infoKey}" aria-label="What is ${item.display_name}?">ⓘ</button></span>
           <span class="shap-feat-val">Val: ${num(item.value, 2)}</span>
         </div>
         <div class="shap-bar-wrap">
@@ -511,7 +529,10 @@ function renderExplanation(data) {
   const basePct = (exp.base_value * 100).toFixed(1);
   const outPct = (exp.model_output * 100).toFixed(1);
   summary.textContent = `Baseline model expectation: ${basePct}% → Net feature impact adjusted output to ${outPct}%.`;
+
+  if (window.QV_initInfoIcons) window.QV_initInfoIcons(card);
 }
+
 
 async function fetchAndRenderBenchmark(ticker, curSym = '$') {
   const tableBody = document.getElementById('benchmark-table-body');

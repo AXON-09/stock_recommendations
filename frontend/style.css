@@ -574,23 +574,43 @@ main { max-width: 900px; margin: 0 auto; padding: 0 1rem 4rem; }
 .info-popover {
   position: absolute;
   z-index: 1000;
-  width: min(320px, calc(100vw - 24px));
-  max-height: min(420px, calc(100vh - 24px));
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(380px, calc(100vh - 40px));
   overflow-y: auto;
-  background: hsl(222 20% 12%);
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(160 80% 40% / 0.5) hsl(222 20% 8%);
+  background: hsl(222 22% 11%);
   border: 1px solid var(--border-glow);
   border-radius: var(--radius-md);
-  box-shadow: 0 12px 40px hsl(0 0% 0% / 0.55), 0 0 0 1px hsl(0 0% 0% / 0.2);
-  padding: 0.85rem 1rem 0.9rem;
+  box-shadow: 0 16px 48px hsl(0 0% 0% / 0.65), 0 0 0 1px hsl(0 0% 0% / 0.3);
+  padding: 0.9rem 1.05rem 0.95rem;
   font-size: 0.78rem;
   line-height: 1.5;
   color: var(--text-2);
   animation: qv-pop-in 0.12s ease-out;
 }
+
+.info-popover::-webkit-scrollbar {
+  width: 6px;
+}
+.info-popover::-webkit-scrollbar-track {
+  background: hsl(222 20% 8%);
+  border-radius: 4px;
+}
+.info-popover::-webkit-scrollbar-thumb {
+  background: hsl(160 80% 40% / 0.5);
+  border-radius: 4px;
+}
+.info-popover::-webkit-scrollbar-thumb:hover {
+  background: hsl(160 100% 45%);
+}
+
 @keyframes qv-pop-in {
   from { opacity: 0; transform: translateY(-2px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
 
 .info-pop-title {
   font-family: var(--font-mono);

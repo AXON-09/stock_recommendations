@@ -605,8 +605,118 @@ const QV_GLOSSARY = {
     range_or_units: '0–100%',
     caution: 'A probabilistic estimate, not a guarantee — and not financial advice.',
   },
+
+  // ── SHAP Explainability & Technical Features ───────────────────────────
+  shap_explainability: {
+    title: 'SHAP Explainability',
+    what_it_is: 'A transparent breakdown showing exactly which market indicators influenced the AI decision and by how much.',
+    how_to_interpret: 'Green positive percentages increased the chance of a price increase. Red negative percentages reduced it.',
+    how_quantview_uses_it: 'QuantView uses SHAP (Shapley Additive Explanations) so the recommendation is completely transparent and never a black box.',
+    range_or_units: 'Percentage points (% impact on model probability)',
+    caution: 'Shows how historical indicators influenced the model, not a certainty of future price action.',
+  },
+
+  shap_positive: {
+    title: 'Top Positive Contributors',
+    what_it_is: 'The technical indicators and market conditions that pushed the AI model most strongly toward a Bullish (Buy) outcome.',
+    how_to_interpret: 'Higher green percentages indicate stronger positive support for an upward price trend.',
+    how_quantview_uses_it: 'QuantView ranks these indicators by their positive contribution to the final XGBoost decision.',
+    range_or_units: '+% impact on probability',
+    caution: 'Strong positive factors can still be affected by unexpected news or broader market downturns.',
+  },
+
+  shap_negative: {
+    title: 'Top Negative Contributors',
+    what_it_is: 'The technical indicators and market conditions that pulled the AI model downward toward a Bearish (Sell/Caution) stance.',
+    how_to_interpret: 'Larger red negative percentages highlight the main risks, resistance levels, or weaknesses holding the stock back.',
+    how_quantview_uses_it: 'QuantView ranks these indicators to warn you about potential headwinds and downside risks.',
+    range_or_units: '-% impact on probability',
+    caution: 'Negative factors indicate statistical headwinds, but momentum can still carry a stock higher.',
+  },
+
+  price_vs_sma200: {
+    title: 'Price vs SMA 200',
+    what_it_is: 'How far the current stock price is trading above or below its 200-day simple moving average (long-term trend).',
+    how_to_interpret: 'A positive percentage means the stock is trading above its long-term baseline (bullish); negative means below (bearish).',
+    how_quantview_uses_it: 'Fed into XGBoost and regime detection as a core measure of long-term structural trend strength.',
+    range_or_units: '% difference from SMA 200',
+    caution: 'Prices too far above the SMA 200 can indicate an extended or overbought rally.',
+  },
+
+  price_vs_sma50: {
+    title: 'Price vs SMA 50',
+    what_it_is: 'How far the current stock price is trading above or below its 50-day simple moving average (medium-term trend).',
+    how_to_interpret: 'Positive values indicate strong medium-term upward momentum; negative values indicate medium-term weakness.',
+    how_quantview_uses_it: 'Used by the ML models and trend vote to identify medium-term trend direction and support levels.',
+    range_or_units: '% difference from SMA 50',
+    caution: 'A stock crossing below its SMA 50 often signals slowing short-term momentum.',
+  },
+
+  momentum_20d: {
+    title: '20-Day Return Momentum',
+    what_it_is: 'The raw percentage change in the stock price over the past 20 trading sessions (~1 calendar month).',
+    how_to_interpret: 'Positive values show recent upward price velocity; negative values show recent downward drift.',
+    how_quantview_uses_it: 'Normalized against volatility to feed into the XGBoost model and momentum signal breakdown.',
+    range_or_units: '% price change over 20 sessions',
+    caution: 'Past 20-day returns do not guarantee the same trend will continue for the next 20 days.',
+  },
+
+  rolling_std_20: {
+    title: '20-Day Rolling Volatility',
+    what_it_is: 'The standard deviation of daily percentage price returns over the last 20 trading days.',
+    how_to_interpret: 'Higher values mean the stock is experiencing larger daily price swings and wider risk.',
+    how_quantview_uses_it: 'Used to normalize momentum and adjust risk thresholds dynamically across all market regimes.',
+    range_or_units: 'Daily return standard deviation',
+    caution: 'High volatility increases both potential reward and potential downside risk.',
+  },
+
+  volume_ratio: {
+    title: 'Volume Ratio',
+    what_it_is: 'Today\u2019s trading volume divided by the 20-day average daily trading volume.',
+    how_to_interpret: 'Values above 1.0 mean higher-than-average investor participation; values below 1.0 mean quiet trading.',
+    how_quantview_uses_it: 'Confirms trend conviction — price breakouts on high volume are given higher weight by the AI model.',
+    range_or_units: 'Ratio (1.0 = average volume)',
+    caution: 'High volume on down days can indicate institutional selling or panic dumping.',
+  },
+
+  adx_pos: {
+    title: '+DI Directional Index',
+    what_it_is: 'Measures the presence and strength of upward buying pressure in the stock price.',
+    how_to_interpret: 'When +DI is higher than -DI, buyers are in control of the trend direction.',
+    how_quantview_uses_it: 'Used alongside ADX to confirm whether a strong trend is moving upward (bullish).',
+    range_or_units: '0–100',
+    caution: '+DI shows upward pressure only and should always be compared against -DI.',
+  },
+
+  adx_neg: {
+    title: '-DI Directional Index',
+    what_it_is: 'Measures the presence and strength of downward selling pressure in the stock price.',
+    how_to_interpret: 'When -DI is higher than +DI, sellers are dominating the price action.',
+    how_quantview_uses_it: 'Used alongside ADX to detect downward trending regimes and downside risk.',
+    range_or_units: '0–100',
+    caution: 'High -DI indicates aggressive selling pressure in recent sessions.',
+  },
+
+  bb_pct: {
+    title: 'Bollinger %B Position',
+    what_it_is: 'Where the current price sits between its upper and lower Bollinger volatility bands.',
+    how_to_interpret: '0.0 = at lower band (oversold); 0.5 = at the middle 20-day average; 1.0 = at upper band (overbought).',
+    how_quantview_uses_it: 'Helps the AI determine if recent price movement is stretched relative to normal statistical bands.',
+    range_or_units: '0.0 to 1.0 (can exceed 1.0 in extreme breakouts)',
+    caution: 'Prices can stay pinned to the upper band during very strong bullish trends.',
+  },
+
+  regime_code: {
+    title: 'Market Regime Code',
+    what_it_is: 'A numeric code representing the market state: Trending Up (+1), Choppy / Sideways (0), or Trending Down (-1).',
+    how_to_interpret: '+1 means trending upward; -1 means trending downward; 0 means no clear directional trend.',
+    how_quantview_uses_it: 'Directly informs the ML models whether the stock is in a trending or range-bound environment.',
+    range_or_units: '-1, 0, or +1',
+    caution: 'Regimes can shift abruptly during earnings announcements or macroeconomic events.',
+  },
 };
 
 if (typeof window !== 'undefined') {
   window.QV_GLOSSARY = QV_GLOSSARY;
 }
+

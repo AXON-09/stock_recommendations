@@ -33,7 +33,7 @@
     document.removeEventListener('click', _onDocClick, true);
     document.removeEventListener('keydown', _onKeyDown, true);
     window.removeEventListener('resize', _closePopover);
-    window.removeEventListener('scroll', _closePopover, true);
+    window.removeEventListener('scroll', _onWindowScroll, true);
   }
 
   function _onDocClick(e) {
@@ -41,6 +41,15 @@
       _closePopover();
     }
   }
+
+  function _onWindowScroll(e) {
+    // If the scroll happened inside the popover or on the scrollbar, DO NOT close
+    if (_popoverEl && (e.target === _popoverEl || _popoverEl.contains(e.target))) {
+      return;
+    }
+    _closePopover();
+  }
+
 
   function _onKeyDown(e) {
     if (e.key === 'Escape') {
@@ -133,8 +142,9 @@
       document.addEventListener('click', _onDocClick, true);
       document.addEventListener('keydown', _onKeyDown, true);
       window.addEventListener('resize', _closePopover);
-      window.addEventListener('scroll', _closePopover, true);
+      window.addEventListener('scroll', _onWindowScroll, true);
     }, 0);
+
   }
 
   function _onInfoBtnClick(e) {

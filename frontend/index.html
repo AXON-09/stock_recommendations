@@ -263,7 +263,7 @@
     <!-- Why this recommendation? (SHAP Feature Contributions) -->
     <div class="card glass" id="shap-card">
       <div class="card-header-flex">
-        <h2 class="card-title">WHY THIS RECOMMENDATION? — SHAP EXPLAINABILITY</h2>
+        <h2 class="card-title">WHY THIS RECOMMENDATION? — SHAP EXPLAINABILITY <button class="info-btn" data-info="shap_explainability" aria-label="What is SHAP Explainability?">ⓘ</button></h2>
         <span class="card-subtag">Feature contributions to XGBoost prediction</span>
       </div>
       <div id="shap-content">
@@ -271,14 +271,14 @@
           <!-- Positive Contributors -->
           <div class="shap-col">
             <div class="shap-col-header green-header">
-              <span>Top Positive Contributors (Bullish)</span>
+              <span>Top Positive Contributors (Bullish) <button class="info-btn" data-info="shap_positive" aria-label="What are positive contributors?">ⓘ</button></span>
             </div>
             <div id="shap-pos-list" class="shap-list"></div>
           </div>
           <!-- Negative Contributors -->
           <div class="shap-col">
             <div class="shap-col-header red-header">
-              <span>Top Negative Contributors (Bearish)</span>
+              <span>Top Negative Contributors (Bearish) <button class="info-btn" data-info="shap_negative" aria-label="What are negative contributors?">ⓘ</button></span>
             </div>
             <div id="shap-neg-list" class="shap-list"></div>
           </div>
@@ -287,6 +287,7 @@
       </div>
       <div id="shap-unavailable" class="hidden shap-unavail-note"></div>
     </div>
+
 
     <!-- Signals + Regime row -->
     <div class="cards-row">
