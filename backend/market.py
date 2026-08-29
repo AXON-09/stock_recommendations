@@ -442,6 +442,17 @@ def get_peer_pe(sector: str, market: MarketInfo) -> Optional[float]:
         return _us_sector_pe(sector)
 
 
+def _get_crumb() -> Optional[str]:
+    try:
+        _SESSION.get("https://fc.yahoo.com", allow_redirects=True, timeout=3)
+        r = _SESSION.get("https://query2.finance.yahoo.com/v1/test/getcrumb", timeout=3)
+        if r.status_code == 200 and r.text and not r.text.startswith("{"):
+            return r.text.strip()
+    except Exception:
+        pass
+    return None
+
+
 def _india_peer_pe(sector: str) -> Optional[float]:
     """Median trailing P/E from the Indian peer universe for a given sector."""
     if sector in _PEER_PE_CACHE:
@@ -449,19 +460,32 @@ def _india_peer_pe(sector: str) -> Optional[float]:
 
     peers = INDIA_SECTOR_PEERS.get(sector)
     if not peers:
-        log.debug("_india_peer_pe: no peers configured for sector '%s'", sector)
         _PEER_PE_CACHE[sector] = None
         return None
 
     pe_values: list[float] = []
-    for peer in peers:
-        try:
-            info = yf.Ticker(peer, session=_SESSION).info
-            pe   = info.get("trailingPE") or info.get("forwardPE")
-            if pe and np.isfinite(pe) and 0 < pe < 500:
-                pe_values.append(float(pe))
-        except Exception:
-            continue
+
+    # Batch fetch in 1 single HTTP request using crumb
+    crumb = _get_crumb()
+    symbols_str = ",".join(peers)
+    url = f"https://query2.finance.yahoo.com/v7/finance/quote?symbols={symbols_str}"
+    if crumb:
+        url += f"&crumb={crumb}"
+    try:
+        r = _SESSION.get(url, timeout=4)
+        if r.status_code == 200:
+            results = r.json().get("quoteResponse", {}).get("result", [])
+            for q in results:
+                pe = q.get("trailingPE") or q.get("forwardPE")
+                if not pe and q.get("epsTrailingTwelveMonths") and q.get("regularMarketPrice"):
+                    eps = q["epsTrailingTwelveMonths"]
+                    price = q["regularMarketPrice"]
+                    if eps and eps > 0 and price and price > 0:
+                        pe = price / eps
+                if pe and np.isfinite(pe) and 0 < pe < 500:
+                    pe_values.append(float(pe))
+    except Exception:
+        pass
 
     if not pe_values:
         # Fallback default sector median approximations if Yahoo rate limits
@@ -499,16 +523,26 @@ def _us_sector_pe(sector: str) -> Optional[float]:
     if not etf:
         _PEER_PE_CACHE[sector] = None
         return None
+
+    crumb = _get_crumb()
+    url = f"https://query2.finance.yahoo.com/v7/finance/quote?symbols={etf}"
+    if crumb:
+        url += f"&crumb={crumb}"
     try:
-        info = yf.Ticker(etf, session=_SESSION).info
-        val  = info.get("trailingPE") or info.get("forwardPE")
-        if val and np.isfinite(val) and 0 < val < 500:
-            res = float(val)
-            _PEER_PE_CACHE[sector] = res
-            return res
+        r = _SESSION.get(url, timeout=4)
+        if r.status_code == 200:
+            results = r.json().get("quoteResponse", {}).get("result", [])
+            if results:
+                q = results[0]
+                val = q.get("trailingPE") or q.get("forwardPE")
+                if val and np.isfinite(val) and 0 < val < 500:
+                    res = float(val)
+                    _PEER_PE_CACHE[sector] = res
+                    return res
         _PEER_PE_CACHE[sector] = None
         return None
     except Exception:
         _PEER_PE_CACHE[sector] = None
         return None
+
 
