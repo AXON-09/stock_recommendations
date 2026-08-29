@@ -778,25 +778,31 @@ function renderModels(data) {
   document.getElementById('model-ens-bar').style.width = `${ensPct}%`;
   document.getElementById('model-ens').textContent     = `${ensPct}%`;
 
-  // LSTM note
-  const lstmNote = document.getElementById('lstm-note');
-  if (!lstm.available) {
-    lstmNote.textContent = `LSTM disabled — ${lstm.reason || 'dependency unavailable'}. Ensemble uses XGBoost only.`;
-  } else {
-    lstmNote.textContent = '';
+  // Model Status Strip
+  const msLstm = document.getElementById('ms-lstm');
+  const msStack = document.getElementById('ms-stack');
+  const msShap = document.getElementById('ms-shap');
+  if (msLstm) {
+    if (lstm.available && lstm.probability != null) {
+      msLstm.innerHTML = 'LSTM: <strong>Active</strong>';
+      msLstm.style.color = '#22c55e';
+      msLstm.style.background = 'rgba(34, 197, 94, 0.1)';
+      msLstm.style.borderColor = 'rgba(34, 197, 94, 0.3)';
+    } else {
+      msLstm.innerHTML = 'LSTM: <strong>Unavailable</strong>';
+      msLstm.style.color = 'var(--text-3)';
+      msLstm.style.background = 'rgba(255, 255, 255, 0.05)';
+      msLstm.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+    }
   }
-
-  // Stacking coefficients note
-  const coeffNote = document.getElementById('coeff-note');
-  if (bt && bt.xgb_coefficient != null) {
-    const lstmPart = bt.lstm_coefficient != null
-      ? `, LSTM: ${bt.lstm_coefficient.toFixed(3)}`
-      : '';
-    coeffNote.textContent =
-      `Stack coefs — XGB: ${bt.xgb_coefficient.toFixed(3)}${lstmPart} ` +
-      `(logistic regression coefs, not percentage weights)`;
-  } else {
-    coeffNote.textContent = '';
+  if (msStack) {
+    msStack.innerHTML = (lstm.available && lstm.probability != null)
+      ? 'Logistic Stack: <strong>Active (XGB+LSTM)</strong>'
+      : 'Logistic Stack: <strong>Active (XGBoost-only)</strong>';
+  }
+  if (msShap) {
+    const hasShap = data.explanation && data.explanation.available;
+    msShap.innerHTML = hasShap ? 'SHAP: <strong>Active</strong>' : 'SHAP: <strong>Unavailable</strong>';
   }
 }
 

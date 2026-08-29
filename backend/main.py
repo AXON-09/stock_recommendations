@@ -451,6 +451,9 @@ def get_recommendation(
     This is a research signal, NOT financial advice.
     """
     raw_ticker = ticker.strip()
+    if not raw_ticker:
+        raise HTTPException(status_code=404, detail="Ticker symbol cannot be empty.")
+
     log.info("[%s] Request received (refresh=%s)", raw_ticker, refresh)
     t0 = time.perf_counter()
 

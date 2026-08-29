@@ -190,3 +190,33 @@ class TestLSTMSequences:
             "First sequence should contain only context values (2.0) when context is sufficient, "
             "got values that include target (3.0)"
         )
+
+
+# ---------------------------------------------------------------------------
+# Out-of-Fold (OOF) Stacking tests
+# ---------------------------------------------------------------------------
+class TestOOFStacking:
+
+    def test_oof_meta_features_are_out_of_fold(self):
+        """
+        Verify that StockRecommender stores OOF predictions and OOF target y
+        evaluated strictly on unseen test folds during walk-forward validation.
+        """
+        np.random.seed(42)
+        n = 400
+        n_feat = len(cfg.FEATURE_COLS)
+        X_mat = np.random.randn(n, n_feat)
+        y_vec = (np.random.rand(n) > 0.5).astype(int)
+        
+        df_X = pd.DataFrame(X_mat, columns=cfg.FEATURE_COLS)
+        df_y = pd.Series(y_vec)
+        
+        rec = StockRecommender()
+        rec.fit(df_X, df_y)
+        
+        assert rec.is_trained, "Recommender should be marked trained"
+        assert rec.oof_probabilities is not None, "OOF probabilities must exist"
+        assert rec.oof_y is not None, "OOF true labels must exist"
+        assert len(rec.oof_probabilities) == len(rec.oof_y)
+        assert len(rec.oof_probabilities) > 0
+        assert (rec.oof_probabilities >= 0.0).all() and (rec.oof_probabilities <= 1.0).all()

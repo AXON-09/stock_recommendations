@@ -290,8 +290,15 @@
           <div class="error-icon-box">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
           </div>
-          <h3 class="error-heading">Analysis Encountered an Issue</h3>
+          <h3 class="error-heading">Analysis Temporarily Unavailable</h3>
           <p id="error-msg" class="error-msg">An error occurred while fetching or processing the requested ticker.</p>
+          <div class="error-causes-box" style="margin: 1rem 0; font-size: 0.85rem; color: var(--text-2); text-align: left; background: rgba(255,255,255,0.03); padding: 0.85rem 1.25rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+            <div style="font-weight: 600; margin-bottom: 0.35rem; color: var(--text-1);">Possible causes:</div>
+            <div>• Market data provider temporarily unavailable or rate-limited</div>
+            <div>• Insufficient historical trading data (minimum 250 trading bars required)</div>
+            <div>• Symbol invalid or not supported by market data feed</div>
+            <div>• Temporary server capacity or network timeout</div>
+          </div>
           <button id="error-retry" class="btn-secondary">Try Again</button>
         </div>
       </section>
@@ -336,7 +343,7 @@
             </div>
             <div class="kpi-val" id="kpi-conf-val">—</div>
             <div class="kpi-foot">
-              <span class="kpi-sub" id="kpi-conf-sub">Calibrated Signal Clarity</span>
+              <span class="kpi-sub" id="kpi-conf-sub">Composite Signal Confidence</span>
             </div>
           </div>
 
@@ -530,6 +537,13 @@
           <!-- ML Ensemble -->
           <div class="card glass">
             <h2 class="card-title">ML ENSEMBLE ARCHITECTURE <button class="info-btn" data-info="xgb_coefficient" aria-label="What are the stacking coefficients?">ⓘ</button></h2>
+            <div class="model-status-strip" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+              <span class="ms-pill ms-active" id="ms-xgb" style="font-size: 0.72rem; padding: 0.2rem 0.55rem; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; color: #38bdf8;">XGBoost: <strong>Active</strong></span>
+              <span class="ms-pill" id="ms-lstm" style="font-size: 0.72rem; padding: 0.2rem 0.55rem; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 4px; color: var(--text-3);">LSTM: <strong>Unavailable</strong></span>
+              <span class="ms-pill ms-active" id="ms-stack" style="font-size: 0.72rem; padding: 0.2rem 0.55rem; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 4px; color: #22c55e;">Logistic Stack: <strong>Active</strong></span>
+              <span class="ms-pill ms-active" id="ms-shap" style="font-size: 0.72rem; padding: 0.2rem 0.55rem; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 4px; color: #a855f7;">SHAP: <strong>Active</strong></span>
+              <span class="ms-pill ms-active" id="ms-wf" style="font-size: 0.72rem; padding: 0.2rem 0.55rem; background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 4px; color: #fbbf24;">Walk-Forward: <strong>3-Fold Purged</strong></span>
+            </div>
             <div class="model-rows">
               <div class="model-row">
                 <span class="model-name">XGBoost (Tabular) <button class="info-btn" data-info="xgboost" aria-label="What is XGBoost?">ⓘ</button></span>
@@ -855,8 +869,8 @@
         <div class="card glass">
           <div class="card-header-flex">
             <div>
-              <h2 class="card-title" style="margin-bottom: 0.2rem;">LIVE WATCHLIST</h2>
-              <span class="card-subtag">Top 10 market gainers &amp; active leaders (5m refresh) · <span id="wl-last-updated">Last Updated: Just now</span></span>
+              <h2 class="card-title" style="margin-bottom: 0.2rem;">FEATURED MARKET WATCHLIST</h2>
+              <span class="card-subtag">Curated active equities &amp; benchmark indices across US &amp; Indian markets · <span id="wl-last-updated">Last Updated: Just now</span></span>
             </div>
             <span class="wl-live-tag">● Live Market Stream</span>
           </div>

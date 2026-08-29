@@ -293,8 +293,20 @@ class TestRecommendationThresholds:
     def test_buy_at_threshold(self):
         assert self._make_result(cfg.BUY_THRESHOLD) == "Buy"
 
+    def test_buy_just_above_threshold(self):
+        assert self._make_result(cfg.BUY_THRESHOLD + 0.001) == "Buy"
+
+    def test_hold_just_below_buy_threshold(self):
+        assert self._make_result(cfg.BUY_THRESHOLD - 0.001) == "Hold"
+
     def test_sell_at_threshold(self):
         assert self._make_result(cfg.SELL_THRESHOLD) == "Sell"
+
+    def test_sell_just_below_threshold(self):
+        assert self._make_result(cfg.SELL_THRESHOLD - 0.001) == "Sell"
+
+    def test_hold_just_above_sell_threshold(self):
+        assert self._make_result(cfg.SELL_THRESHOLD + 0.001) == "Hold"
 
     def test_hold_in_middle(self):
         mid = (cfg.BUY_THRESHOLD + cfg.SELL_THRESHOLD) / 2

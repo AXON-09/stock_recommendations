@@ -377,3 +377,33 @@ class TestAPIErrorHandling:
         resp   = client.get("/api/cache")
         assert resp.status_code == 200
         assert isinstance(resp.json(), dict)
+
+    def test_empty_ticker_returns_404(self):
+        """An empty or whitespace ticker query must return HTTP 404 or 422."""
+        from main import app
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/api/recommend?ticker=%20%20")
+        assert resp.status_code in (400, 404, 422)
+
+    def test_institutional_intelligence_present(self):
+        """Institutional intelligence must be structured in recommendation response."""
+        from main import app
+        ohlcv = _make_ohlcv()
+        with (
+            patch("market.resolve_ticker_with_fallback", return_value="AAPL"),
+            patch("yfinance.Ticker", return_value=_make_yf_ticker_mock(ohlcv, _US_INFO)),
+        ):
+            client = TestClient(app, raise_server_exceptions=True)
+            resp = client.get("/api/recommend?ticker=AAPL")
+        
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "institutional_intelligence" in data
+        inst = data["institutional_intelligence"]
+        assert inst is not None
+        assert "analyst_rating" in inst
+        assert "target_price" in inst
+        assert "revenue_forecast" in inst
+        assert "ps_ratio" in inst
+        assert "trading_volume_str" in inst
+        assert "gross_margin_pct" in inst
