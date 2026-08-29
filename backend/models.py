@@ -222,6 +222,36 @@ class LSTMResult:
 
 
 @dataclass
+class ExplanationResult:
+    """SHAP-based feature-level contributions to XGBoost prediction."""
+    available: bool
+    base_value: Optional[float] = None
+    model_output: Optional[float] = None
+    top_positive_features: List[Dict[str, Any]] = field(default_factory=list)
+    top_negative_features: List[Dict[str, Any]] = field(default_factory=list)
+    reason: Optional[str] = None
+
+
+
+FEATURE_DISPLAY_NAMES: Dict[str, str] = {
+    "rsi": "RSI (14-Day)",
+    "adx": "ADX Trend Strength",
+    "adx_pos": "+DI Directional Index",
+    "adx_neg": "-DI Directional Index",
+    "macd_diff": "MACD Histogram",
+    "bb_pct": "Bollinger %B Position",
+    "momentum_20d": "20-Day Return Momentum",
+    "rolling_std_20": "20-Day Rolling Volatility",
+    "volume_ratio": "Volume vs 20-Day Avg",
+    "price_vs_sma50": "Price vs SMA 50",
+    "price_vs_sma200": "Price vs SMA 200",
+    "sma200_slope": "SMA 200 Slope",
+    "atr_pct": "ATR Volatility %",
+    "regime_code": "Market Regime Code",
+}
+
+
+@dataclass
 class PredictionResult:
     xgb_prob:           float
     lstm_result:        LSTMResult
@@ -234,6 +264,8 @@ class PredictionResult:
     regime:             str
     backtest_metrics:   Dict[str, Any] = field(default_factory=dict)
     horizon_days:       int = cfg.FORECAST_HORIZON
+    explanation:        Optional[ExplanationResult] = None
+
 
 
 # ---------------------------------------------------------------------------
@@ -738,6 +770,9 @@ class StockRecommender:
             "valuation": _valuation_signal(features),
         }
 
+        # ── SHAP Explainability ───────────────────────────────────────────────
+        explanation = self.explain(x_point=x_point, features=features)
+
         return PredictionResult(
             xgb_prob=round(xgb_p,  4),
             lstm_result=lstm_result,
@@ -749,4 +784,88 @@ class StockRecommender:
             signal_breakdown=signals,
             regime=features.regime,
             backtest_metrics=self.backtest_metrics,
+            explanation=explanation,
         )
+
+    # -----------------------------------------------------------------------
+    def explain(
+        self,
+        x_point: pd.DataFrame,
+        features: Optional[AssetFeatures] = None,
+        top_n: int = cfg.SHAP_TOP_N,
+    ) -> ExplanationResult:
+        """
+        Generate SHAP-based feature-level contributions to the XGBoost prediction.
+
+        Uses shap.TreeExplainer on the exact scaled feature vector used for prediction.
+        Maps contributions back to the 14 raw unscaled feature values.
+        """
+        if not self.is_trained or self.xgb_model is None:
+            return ExplanationResult(
+                available=False,
+                reason="Model is not trained yet.",
+            )
+
+        try:
+            import shap
+
+            x_scaled = self.xgb_scaler.transform(x_point)
+            explainer = shap.TreeExplainer(self.xgb_model)
+            shap_obj = explainer(x_scaled)
+
+            # Handle 1D, 2D, or 3D output shapes across shap versions
+            vals = shap_obj.values
+            if len(vals.shape) == 3:
+                # Binary classification (samples, features, classes) -> positive class (index 1)
+                s_arr = vals[0, :, 1]
+            elif len(vals.shape) == 2:
+                # (samples, features)
+                s_arr = vals[0, :]
+            else:
+                s_arr = vals
+
+            base_val = float(shap_obj.base_values[0]) if hasattr(shap_obj, "base_values") else 0.5
+            if isinstance(base_val, (np.ndarray, list)):
+                base_val = float(base_val[-1])
+
+            model_out = float(self.xgb_model.predict_proba(x_scaled)[0][1])
+
+            pos_items: List[Dict[str, Any]] = []
+            neg_items: List[Dict[str, Any]] = []
+
+            feature_cols = list(x_point.columns)
+            for i, col in enumerate(feature_cols):
+                s_val = float(s_arr[i])
+                raw_v = float(x_point.iloc[0][col])
+                d_name = FEATURE_DISPLAY_NAMES.get(col, col.replace("_", " ").title())
+                item = {
+                    "feature": col,
+                    "display_name": d_name,
+                    "value": round(raw_v, 4),
+                    "shap_value": round(s_val, 4),
+                }
+                if s_val > 0:
+                    pos_items.append(item)
+                elif s_val < 0:
+                    neg_items.append(item)
+
+            # Sort positive features descending, negative features ascending
+            pos_items.sort(key=lambda x: x["shap_value"], reverse=True)
+            neg_items.sort(key=lambda x: x["shap_value"])
+
+            return ExplanationResult(
+                available=True,
+                base_value=round(base_val, 4),
+                model_output=round(model_out, 4),
+                top_positive_features=pos_items[:top_n],
+                top_negative_features=neg_items[:top_n],
+                reason=None,
+            )
+
+        except Exception as exc:
+            log.warning("SHAP calculation failed: %s", exc)
+            return ExplanationResult(
+                available=False,
+                reason=f"SHAP explanation unavailable: {exc}",
+            )
+

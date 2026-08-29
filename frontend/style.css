@@ -670,3 +670,276 @@ main { max-width: 900px; margin: 0 auto; padding: 0 1rem 4rem; }
 @media (max-width: 480px) {
   .info-popover { font-size: 0.76rem; padding: 0.75rem 0.85rem 0.8rem; }
 }
+
+/* ── SHAP & Benchmark styles ──────────────────────────────── */
+.card-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.card-subtag {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+
+.shap-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 680px) {
+  .shap-grid { grid-template-columns: 1fr; }
+}
+
+.shap-col {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+}
+
+.shap-col-header {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.green-header { color: var(--green); }
+.red-header { color: var(--red); }
+
+.shap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.shap-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+}
+
+.shap-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.shap-feat-name {
+  color: var(--text-1);
+  font-weight: 500;
+}
+
+.shap-feat-val {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.shap-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.shap-bar-bg {
+  flex: 1;
+  height: 6px;
+  background: hsl(222 18% 18%);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.shap-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.shap-bar-pos { background: var(--green); }
+.shap-bar-neg { background: var(--red); }
+
+.shap-impact {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: 48px;
+  text-align: right;
+}
+
+.shap-impact-pos { color: var(--green); }
+.shap-impact-neg { color: var(--red); }
+
+.shap-summary-note {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.shap-empty-note {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  font-style: italic;
+}
+
+/* ── Benchmark Table & Chart ──────────────────────────────── */
+.table-responsive {
+  overflow-x: auto;
+  margin-bottom: 1.25rem;
+}
+
+.benchmark-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  text-align: left;
+}
+
+.benchmark-table th {
+  background: var(--bg-card2);
+  color: var(--text-2);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.benchmark-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid hsl(222 14% 16%);
+  font-family: var(--font-mono);
+}
+
+.benchmark-table tbody tr:hover {
+  background: hsl(222 18% 14% / 0.5);
+}
+
+.strat-name-cell {
+  font-family: var(--font-ui) !important;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.strat-badge-qv {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.strat-badge-bh {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.strat-badge-sma {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--amber);
+}
+
+.chart-container {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.chart-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 1.25rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.75rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-2);
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot-qv { background: var(--green); }
+.dot-bh { background: var(--blue); }
+.dot-sma { background: var(--amber); }
+
+.equity-chart {
+  width: 100%;
+  height: 200px;
+  background: hsl(222 22% 8%);
+  border-radius: var(--radius-sm);
+  border: 1px solid hsl(222 14% 16%);
+  overflow: visible;
+}
+
+.cost-pills-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.cost-pill {
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+}
+
+.cost-pill-fee {
+  font-size: 0.72rem;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+
+.cost-pill-ret {
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  margin: 0.2rem 0;
+}
+
+.cost-pill-sharpe {
+  font-size: 0.72rem;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+}
+

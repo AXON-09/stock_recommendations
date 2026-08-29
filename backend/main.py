@@ -46,6 +46,8 @@ from engine import (
 )
 from market import resolve_ticker_with_fallback, MarketInfo
 from models import StockRecommender
+from backtest import run_benchmark_comparison, BenchmarkComparisonResult
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -205,6 +207,62 @@ class CacheInfo(BaseModel):
     age_hours:    Optional[float]
 
 
+class FeatureExplanationItem(BaseModel):
+    feature:      str
+    display_name: str
+    value:        float
+    shap_value:   float
+
+
+class ExplanationInfo(BaseModel):
+    available:             bool
+    base_value:            Optional[float] = None
+    model_output:          Optional[float] = None
+    top_positive_features: List[FeatureExplanationItem] = Field(default_factory=list)
+    top_negative_features: List[FeatureExplanationItem] = Field(default_factory=list)
+    reason:                Optional[str] = None
+
+
+class StrategyMetricsModel(BaseModel):
+    name:         str
+    total_return: float
+    cagr:         float
+    sharpe:       float
+    max_drawdown: float
+    volatility:   float
+    trades:       int
+    win_rate:     Optional[float] = None
+
+
+class CostScenarioModel(BaseModel):
+    cost_pct:     float
+    cost_label:   str
+    total_return: float
+    cagr:         float
+    sharpe:       float
+    max_drawdown: float
+
+
+class BenchmarkPeriodModel(BaseModel):
+    start:        str
+    end:          str
+    trading_days: int
+
+
+class BenchmarkResponse(BaseModel):
+    success:          bool = True
+    ticker:           str
+    display_ticker:   str
+    period:           BenchmarkPeriodModel
+    starting_capital: float
+    transaction_cost: float
+    slippage:         float
+    strategies:       List[StrategyMetricsModel]
+    equity_curve:     List[Dict[str, Any]]
+    cost_scenarios:   List[CostScenarioModel]
+    disclaimer:       str
+
+
 class RecommendationResponse(BaseModel):
     success:          bool = True
     ticker:           str
@@ -223,6 +281,7 @@ class RecommendationResponse(BaseModel):
     confidence:       ConfidenceInfo
     backtest:         BacktestInfo
     cache:            CacheInfo
+    explanation:      Optional[ExplanationInfo] = None
     disclaimer:       str
 
 
@@ -231,6 +290,7 @@ class ErrorResponse(BaseModel):
     error:         str
     ticker:        Optional[str] = None
     display_ticker: Optional[str] = None
+
 
 
 _DISCLAIMER = (
@@ -497,8 +557,117 @@ def get_recommendation(
             hit=cache_hit,
             **{k: v for k, v in entry.to_meta().items() if k in ("trained_at", "data_through", "age_hours")},
         ),
+        explanation=(
+            ExplanationInfo(
+                available=result.explanation.available,
+                base_value=result.explanation.base_value,
+                model_output=result.explanation.model_output,
+                top_positive_features=[
+                    FeatureExplanationItem(**item) for item in result.explanation.top_positive_features
+                ],
+                top_negative_features=[
+                    FeatureExplanationItem(**item) for item in result.explanation.top_negative_features
+                ],
+                reason=result.explanation.reason,
+            )
+            if result.explanation is not None else None
+        ),
         disclaimer=_DISCLAIMER,
     )
+
+
+@app.get("/api/backtest/compare", response_model=BenchmarkResponse, tags=["Backtesting"])
+def compare_strategies(
+    ticker:   str   = Query(..., description="Stock ticker (e.g. AAPL, RELIANCE, TCS.NS)"),
+    capital:  float = Query(cfg.STARTING_CAPITAL, description="Starting capital in base currency"),
+    cost:     float = Query(cfg.TRANSACTION_COST, description="Transaction fee per trade (e.g. 0.001)"),
+    slippage: float = Query(cfg.SLIPPAGE, description="Execution slippage (e.g. 0.0005)"),
+    refresh:  bool  = Query(False, description="Force retrain / bypass memory cache"),
+):
+    """
+    Run realistic strategy benchmarking across QuantView, Buy & Hold, and SMA50/200.
+    Evaluates identical time period, identical starting capital, transaction costs, and slippage.
+    """
+    ticker_clean = ticker.strip()
+    try:
+        resolved = resolve_ticker_with_fallback(ticker_clean)
+        disp_ticker = resolved.removesuffix(".NS").removesuffix(".BO") if resolved.endswith((".NS", ".BO")) else resolved
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+
+    cache_hit = (resolved in _cache) and (not refresh) and (not _cache[resolved].is_stale)
+
+    if not cache_hit:
+        log.info("[%s] Building feature matrix for benchmark...", resolved)
+        try:
+            X, y, df = build_feature_matrix(resolved)
+            rec = StockRecommender()
+            rec.fit(X, y)
+            _cache[resolved] = CacheEntry(model=rec, X=X, df=df)
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        except Exception as exc:
+            log.exception("[%s] Benchmark model fit failed", resolved)
+            raise HTTPException(status_code=500, detail=f"Model training error: {exc}")
+
+    entry = _cache[resolved]
+    df = entry.df
+
+    try:
+        res = run_benchmark_comparison(
+            df=df,
+            qv_probabilities=None,
+            ticker=resolved,
+            initial_capital=capital,
+            transaction_cost=cost,
+            slippage=slippage,
+        )
+    except Exception as exc:
+        log.exception("[%s] Benchmark simulation failed", resolved)
+        raise HTTPException(status_code=500, detail=f"Benchmark simulation error: {exc}")
+
+    return BenchmarkResponse(
+        success=True,
+        ticker=resolved,
+        display_ticker=disp_ticker,
+        period=BenchmarkPeriodModel(
+            start=res.start_date,
+            end=res.end_date,
+            trading_days=res.trading_days,
+        ),
+        starting_capital=res.starting_capital,
+        transaction_cost=res.transaction_cost,
+        slippage=res.slippage,
+        strategies=[
+            StrategyMetricsModel(
+                name=s.name,
+                total_return=s.total_return,
+                cagr=s.cagr,
+                sharpe=s.sharpe,
+                max_drawdown=s.max_drawdown,
+                volatility=s.volatility,
+                trades=s.trades,
+                win_rate=s.win_rate,
+            )
+            for s in res.strategies
+        ],
+        equity_curve=res.equity_curve,
+        cost_scenarios=[
+            CostScenarioModel(
+                cost_pct=cs.cost_pct,
+                cost_label=cs.cost_label,
+                total_return=cs.total_return,
+                cagr=cs.cagr,
+                sharpe=cs.sharpe,
+                max_drawdown=cs.max_drawdown,
+            )
+            for cs in res.cost_scenarios
+        ],
+        disclaimer=_DISCLAIMER,
+    )
+
 
 
 @app.get("/api/health", tags=["Utility"])

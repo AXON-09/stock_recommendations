@@ -192,3 +192,31 @@ NOTE ON VALUATION (P/E):
   If a point-in-time fundamental data source (e.g. Compustat, Tiingo)
   is added in the future, pe_relative should be appended here.
 """
+
+# ---------------------------------------------------------------------------
+# Backtesting & Strategy Benchmarking Settings
+# ---------------------------------------------------------------------------
+TRANSACTION_COST: float = 0.001
+"""Default transaction cost per trade (0.10% / 10 bps)."""
+
+SLIPPAGE: float = 0.0005
+"""Default market execution slippage (0.05% / 5 bps)."""
+
+STARTING_CAPITAL: float = 100_000.0
+"""Default portfolio starting capital for benchmark simulations."""
+
+SMA_FAST_PERIOD: int = 50
+"""Fast moving average period for benchmark strategy."""
+
+SMA_SLOW_PERIOD: int = 200
+"""Slow moving average period for benchmark strategy."""
+
+COST_SCENARIOS: list = [0.0, 0.0005, 0.001, 0.002]
+"""Transaction cost sensitivity scenarios: 0%, 0.05%, 0.10%, 0.20%."""
+
+# ---------------------------------------------------------------------------
+# Explainability (SHAP) Settings
+# ---------------------------------------------------------------------------
+SHAP_TOP_N: int = 5
+"""Number of top positive and top negative contributing features to display."""
+

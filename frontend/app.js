@@ -434,30 +434,213 @@ function renderDisclaimer(data) {
   document.getElementById('disclaimer-text').textContent = data.disclaimer;
 }
 
+function renderExplanation(data) {
+  const exp = data.explanation;
+  const card = document.getElementById('shap-card');
+  const content = document.getElementById('shap-content');
+  const unavail = document.getElementById('shap-unavailable');
+  const posList = document.getElementById('shap-pos-list');
+  const negList = document.getElementById('shap-neg-list');
+  const summary = document.getElementById('shap-summary');
+
+  if (!exp || !exp.available) {
+    content.classList.add('hidden');
+    unavail.classList.remove('hidden');
+    unavail.textContent = exp?.reason || 'SHAP explainability is currently unavailable for this prediction.';
+    return;
+  }
+
+  content.classList.remove('hidden');
+  unavail.classList.add('hidden');
+  posList.innerHTML = '';
+  negList.innerHTML = '';
+
+  const maxAbs = Math.max(
+    ...exp.top_positive_features.map(f => Math.abs(f.shap_value)),
+    ...exp.top_negative_features.map(f => Math.abs(f.shap_value)),
+    0.05
+  );
+
+  function renderList(targetEl, items, isPos) {
+    if (!items || items.length === 0) {
+      targetEl.innerHTML = `<p class="shap-empty-note">No significant ${isPos ? 'positive' : 'negative'} factors.</p>`;
+      return;
+    }
+
+    items.forEach(item => {
+      const barPct = Math.min(100, Math.round((Math.abs(item.shap_value) / maxAbs) * 100));
+      const sign = item.shap_value > 0 ? '+' : '';
+      const row = document.createElement('div');
+      row.className = 'shap-item';
+      row.innerHTML = `
+        <div class="shap-item-top">
+          <span class="shap-feat-name">${item.display_name}</span>
+          <span class="shap-feat-val">Val: ${num(item.value, 2)}</span>
+        </div>
+        <div class="shap-bar-wrap">
+          <div class="shap-bar-bg">
+            <div class="shap-bar ${isPos ? 'shap-bar-pos' : 'shap-bar-neg'}" style="width: ${barPct}%;"></div>
+          </div>
+          <span class="shap-impact ${isPos ? 'shap-impact-pos' : 'shap-impact-neg'}">${sign}${(item.shap_value * 100).toFixed(1)}%</span>
+        </div>
+      `;
+      targetEl.appendChild(row);
+    });
+  }
+
+  renderList(posList, exp.top_positive_features, true);
+  renderList(negList, exp.top_negative_features, false);
+
+  const basePct = (exp.base_value * 100).toFixed(1);
+  const outPct = (exp.model_output * 100).toFixed(1);
+  summary.textContent = `Baseline model expectation: ${basePct}% → Net feature impact adjusted output to ${outPct}%.`;
+}
+
+async function fetchAndRenderBenchmark(ticker) {
+  const tableBody = document.getElementById('benchmark-table-body');
+  const scenariosGrid = document.getElementById('cost-scenarios-grid');
+  const periodLabel = document.getElementById('benchmark-period-label');
+  const svg = document.getElementById('equity-chart');
+
+  try {
+    const url = `${API_BASE}/api/backtest/compare?ticker=${encodeURIComponent(ticker)}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    if (periodLabel && data.period) {
+      periodLabel.textContent = `${data.period.start} to ${data.period.end} (${data.period.trading_days} sessions) · $100k capital · 0.10% fee · 0.05% slippage`;
+    }
+
+    // 1. Populate Metrics Table
+    if (tableBody && data.strategies) {
+      tableBody.innerHTML = '';
+      data.strategies.forEach(s => {
+        const badgeClass = s.name === 'QuantView' ? 'strat-badge-qv' : s.name === 'Buy & Hold' ? 'strat-badge-bh' : 'strat-badge-sma';
+        const retColor = s.total_return > 0 ? 'var(--green)' : s.total_return < 0 ? 'var(--red)' : 'var(--text-1)';
+        const sign = s.total_return > 0 ? '+' : '';
+        const cagrSign = s.cagr > 0 ? '+' : '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="strat-name-cell"><span class="${badgeClass}"></span> ${s.name}</td>
+          <td style="color: ${retColor}; font-weight:700;">${sign}${num(s.total_return, 2)}%</td>
+          <td style="color: ${s.cagr > 0 ? 'var(--green)' : 'var(--red)'};">${cagrSign}${num(s.cagr, 2)}%</td>
+          <td>${num(s.sharpe, 2)}</td>
+          <td style="color: var(--red);">${num(s.max_drawdown, 2)}%</td>
+          <td>${num(s.volatility, 2)}%</td>
+          <td>${s.trades}</td>
+          <td>${s.win_rate != null ? `${num(s.win_rate, 1)}%` : '—'}</td>
+        `;
+        tableBody.appendChild(tr);
+      });
+    }
+
+    // 2. Render SVG Equity Curves
+    if (svg && data.equity_curve && data.equity_curve.length > 1) {
+      renderEquityChart(svg, data.equity_curve);
+    }
+
+    // 3. Render Cost Scenarios
+    if (scenariosGrid && data.cost_scenarios) {
+      scenariosGrid.innerHTML = '';
+      data.cost_scenarios.forEach(cs => {
+        const sign = cs.total_return > 0 ? '+' : '';
+        const col = cs.total_return > 0 ? 'var(--green)' : 'var(--red)';
+        const card = document.createElement('div');
+        card.className = 'cost-pill';
+        card.innerHTML = `
+          <div class="cost-pill-fee">Fee: ${cs.cost_label}</div>
+          <div class="cost-pill-ret" style="color: ${col};">${sign}${num(cs.total_return, 2)}%</div>
+          <div class="cost-pill-sharpe">Sharpe: ${num(cs.sharpe, 2)} · MaxDD: ${num(cs.max_drawdown, 1)}%</div>
+        `;
+        scenariosGrid.appendChild(card);
+      });
+    }
+  } catch (err) {
+    console.error('Benchmark fetch error:', err);
+    if (tableBody) {
+      tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-3); padding:1rem;">Benchmark comparison unavailable.</td></tr>`;
+    }
+  }
+}
+
+function renderEquityChart(svg, points) {
+  const w = 800;
+  const h = 220;
+  const padTop = 20;
+  const padBottom = 25;
+  const padLeft = 60;
+  const padRight = 20;
+
+  const allVals = [];
+  points.forEach(p => {
+    if (p.quantview != null) allVals.push(p.quantview);
+    if (p.buy_hold != null) allVals.push(p.buy_hold);
+    if (p.sma50_200 != null) allVals.push(p.sma50_200);
+  });
+
+  const minV = Math.min(...allVals) * 0.98;
+  const maxV = Math.max(...allVals) * 1.02;
+  const rangeV = Math.max(1, maxV - minV);
+
+  const n = points.length;
+  const getX = i => padLeft + (i / (n - 1)) * (w - padLeft - padRight);
+  const getY = v => padTop + (1 - (v - minV) / rangeV) * (h - padTop - padBottom);
+
+  const qvPts = points.map((p, i) => `${getX(i).toFixed(1)},${getY(p.quantview).toFixed(1)}`).join(' ');
+  const bhPts = points.map((p, i) => `${getX(i).toFixed(1)},${getY(p.buy_hold).toFixed(1)}`).join(' ');
+  const smaPts = points.map((p, i) => `${getX(i).toFixed(1)},${getY(p.sma50_200).toFixed(1)}`).join(' ');
+
+  // Grid lines
+  const midV = (minV + maxV) / 2;
+  const gridY1 = getY(maxV).toFixed(1);
+  const gridY2 = getY(midV).toFixed(1);
+  const gridY3 = getY(minV).toFixed(1);
+
+  svg.innerHTML = `
+    <!-- Grid -->
+    <line x1="${padLeft}" y1="${gridY1}" x2="${w - padRight}" y2="${gridY1}" stroke="hsl(222 14% 18%)" stroke-dasharray="3,3"/>
+    <line x1="${padLeft}" y1="${gridY2}" x2="${w - padRight}" y2="${gridY2}" stroke="hsl(222 14% 18%)" stroke-dasharray="3,3"/>
+    <line x1="${padLeft}" y1="${gridY3}" x2="${w - padRight}" y2="${gridY3}" stroke="hsl(222 14% 18%)" stroke-dasharray="3,3"/>
+    
+    <!-- Y Labels -->
+    <text x="${padLeft - 8}" y="${Number(gridY1) + 4}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">$${Math.round(maxV).toLocaleString()}</text>
+    <text x="${padLeft - 8}" y="${Number(gridY2) + 4}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">$${Math.round(midV).toLocaleString()}</text>
+    <text x="${padLeft - 8}" y="${Number(gridY3) + 4}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">$${Math.round(minV).toLocaleString()}</text>
+
+    <!-- X Labels -->
+    <text x="${padLeft}" y="${h - 6}" fill="hsl(210 10% 50%)" font-size="10" font-family="monospace">${points[0].date}</text>
+    <text x="${w - padRight}" y="${h - 6}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">${points[n-1].date}</text>
+
+    <!-- Lines -->
+    <polyline points="${bhPts}" fill="none" stroke="hsl(210 90% 60%)" stroke-width="2" stroke-linejoin="round" opacity="0.85"/>
+    <polyline points="${smaPts}" fill="none" stroke="hsl(38 95% 58%)" stroke-width="2" stroke-linejoin="round" opacity="0.85"/>
+    <polyline points="${qvPts}" fill="none" stroke="hsl(160 80% 45%)" stroke-width="2.5" stroke-linejoin="round"/>
+  `;
+}
+
 // ── Main render ───────────────────────────────────────────────────────────────
 function renderAll(data) {
-  // Expose the latest response so info-popover "dynamic" content (e.g. the
-  // live RSI vs adaptive-threshold readout) can reference current values.
   window._qvLastData = data;
 
   renderHero(data);
   renderConfidence(data);
   renderModels(data);
+  renderExplanation(data);
   renderSignals(data);
   renderRegime(data);
   renderVolatility(data);
   renderValuation(data);
+  fetchAndRenderBenchmark(data.ticker);
   renderBacktest(data);
   renderDisclaimer(data);
 
-  // Re-scan the whole result panel for any info-buttons not already bound
-  // (the static ones in index.html only need this once, but it's cheap and
-  // safe to repeat on every render).
   if (window.QV_initInfoIcons) window.QV_initInfoIcons(resultPanel);
   if (window.QV_closeInfoPopover) window.QV_closeInfoPopover();
 
   showResult();
 }
+
 
 // ── API call ──────────────────────────────────────────────────────────────────
 async function analyze(ticker) {

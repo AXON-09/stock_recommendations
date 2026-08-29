@@ -10,6 +10,9 @@ An ML-powered quantitative research tool for stocks and ETFs. Provides research 
 
 | Feature | Description |
 |---|---|
+| **Explainable Predictions (SHAP)** | TreeExplainer maps exact feature contributions (positive and negative) to XGBoost predictions |
+| **Strategy Benchmarking** | Fair historical comparison of QuantView vs. Buy & Hold vs. SMA50/200 over identical time periods and capital |
+| **Realistic Backtesting** | Incorporates configurable transaction costs (0.10%) and market slippage (0.05%) with cost sensitivity analysis |
 | **Walk-Forward Validation** | Expanding-window backtest with 20-day purge/embargo to prevent label leakage |
 | **Volatility-Adaptive RSI** | RSI buy/sell thresholds scale with the asset's own annualised volatility |
 | **Market Regime Detection** | ADX + SMA200 slope classifies Trending Up / Trending Down / Choppy |
@@ -18,8 +21,9 @@ An ML-powered quantitative research tool for stocks and ETFs. Provides research 
 | **Logistic Stacking** | Trained on OOF predictions; coefficients show relative contributions |
 | **Calibrated Confidence** | 5-component composite score (probability, volatility, data quality, regime, model agreement) |
 | **Sector Valuation** | Rule-based P/E comparison vs sector ETF (not an ML feature — no historical data available) |
-| **Full Backtest Metrics** | Accuracy, Precision, Recall, F1, ROC-AUC, Brier Score |
+| **Full Backtest Metrics** | Total Return, CAGR, Sharpe Ratio, Max Drawdown, Volatility, Number of Trades, Win Rate |
 | **Local Web Dashboard** | Premium dark UI served directly by FastAPI — no Node.js required |
+
 
 ---
 
@@ -135,23 +139,27 @@ Tests cover:
 stock-recommender/
 │
 ├── backend/
-│   ├── config.py          ← All constants and thresholds (single source of truth)
+│   ├── config.py          ← All constants, thresholds, fees, and feature columns (single source of truth)
 │   ├── engine.py          ← Data fetching, indicator computation, feature extraction
-│   ├── models.py          ← Walk-forward training, XGBoost, LSTM, ensemble, confidence
-│   ├── main.py            ← FastAPI app (serves frontend + API)
+│   ├── models.py          ← Walk-forward training, XGBoost, LSTM, ensemble, SHAP explainability
+│   ├── backtest.py        ← Realistic backtesting engine & strategy benchmarking comparison
+│   ├── main.py            ← FastAPI app (serves frontend + REST API)
 │   └── requirements.txt
 │
 ├── frontend/
-│   ├── index.html         ← Dashboard UI
+│   ├── index.html         ← Dashboard UI with SHAP contributions & Benchmark charts
 │   ├── style.css          ← Premium dark/glassmorphism design
-│   └── app.js             ← Fetch API, render logic
+│   └── app.js             ← Fetch API, SVG equity chart rendering, interactive components
 │
 ├── tests/
 │   ├── conftest.py
-│   ├── test_leakage.py    ← Walk-forward and LSTM leakage tests
-│   ├── test_features.py   ← Indicator, signal, and confidence tests
-│   ├── test_market.py     ← Ticker resolution and market/ETF metadata tests
-│   └── test_api.py        ← FastAPI response-shape tests (mocked yfinance)
+│   ├── test_leakage.py           ← Walk-forward and LSTM leakage tests
+│   ├── test_features.py          ← Indicator, signal, and confidence tests
+│   ├── test_market.py            ← Ticker resolution and market/ETF metadata tests
+│   ├── test_api.py               ← FastAPI response-shape tests (mocked yfinance)
+│   ├── test_shap.py              ← SHAP TreeExplainer & feature attribution tests
+│   ├── test_benchmark.py         ← Strategy benchmarking suite tests
+│   └── test_transaction_costs.py ← Realistic fee & slippage execution tests
 │
 ├── run.py                 ← Single-command launcher
 └── README.md
@@ -161,47 +169,63 @@ stock-recommender/
 
 ## Methodology
 
-### Forecast Target
+### 1. Forecast Target
 ```
 y[t] = 1  if  Close[t+20] > Close[t]  else 0
 ```
 Predictions represent the model's estimate of whether the price will be higher 20 trading days (~1 calendar month) later.
 
-### Walk-Forward Validation with Purge
+### 2. Walk-Forward Validation with Purge & Embargo
 ```
 [── TRAIN ──────────────────][── PURGE (20d) ──][── TEST ──]
 ```
-Because `y[t]` uses `Close[t+20]`, the last 20 rows of each training fold are removed before fitting. This prevents labels from training rows from "seeing" prices inside the test window.
+Because `y[t]` uses `Close[t+20]`, the last 20 rows of each training fold are removed before fitting. This eliminates target look-ahead bias across validation folds.
 
-### Volatility-Adaptive RSI
+### 3. Explainable Predictions (SHAP)
+QuantView uses `shap.TreeExplainer` on the fitted XGBoost model to provide feature-level attribution:
+* Computes Shapley values on the scaled feature input vector.
+* Isolates top positive contributors (features pulling the recommendation toward BUY) and top negative contributors (features pulling toward SELL/HOLD).
+* Maps contributions to human-readable names and unscaled indicator readings.
+
+### 4. Strategy Benchmarking
+QuantView evaluates historical strategy performance against simple baseline strategies under configurable transaction-cost and slippage assumptions:
+* **QuantView**: Long when walk-forward probability $P \ge 0.50$, Cash otherwise.
+* **Buy & Hold**: Enters Day 1, holds through end of period.
+* **SMA50/200**: Golden Cross / Trend Filter (Long when $\text{Close} > \text{SMA200}$, Cash otherwise).
+
+All strategies evaluate over the exact same time period, starting capital ($100,000), calendar sessions, and cost parameters.
+
+### 5. Realistic Backtesting with Transaction Costs & Slippage
+* **Transaction Costs**: Configurable (default `0.10%` / 10 bps per trade). Fees apply strictly upon position transitions ($0 \to 1$ and $1 \to 0$).
+* **Execution Slippage**: Configurable (default `0.05%` / 5 bps). Buys execute at $\text{Close} \times (1 + \text{slippage})$, Sells execute at $\text{Close} \times (1 - \text{slippage})$.
+* **No Look-Ahead Bias**: Signals formed at bar $t$ execute without using future prices.
+* **Cost Sensitivity Analysis**: QuantView returns are automatically evaluated across `0%`, `0.05%`, `0.10%`, and `0.20%` transaction cost tiers.
+
+### 6. Volatility-Adaptive RSI
 ```
 ann_vol = rolling_std_20 * sqrt(252)
 adj     = clip((ann_vol - 0.10) / 0.40 * 10,  -5, +10)
 buy     = clip(30 - adj,  15, 45)
 sell    = clip(70 + adj,  55, 85)
 ```
-High-volatility assets (e.g. TSLA ~70% ann vol) get wider bands so normal price swings don't trigger false signals.
+High-volatility assets get wider dynamic bands so normal price swings don't trigger premature false signals.
 
-### Trend Signal (SMA)
-Three binary votes — price > SMA50, price > SMA200, SMA200 sloping up — are combined by unanimity, not majority:
+### 7. Trend Signal (SMA)
+Three binary votes — price > SMA50, price > SMA200, SMA200 sloping up — are combined by unanimity:
 ```
 3/3 votes bullish → "bullish"
 0/3 votes bullish → "bearish"
-1 or 2 votes       → "neutral"  (the three conditions disagree)
+1 or 2 votes       → "neutral"  (conditions disagree)
 ```
-Requiring unanimity keeps "neutral" reachable and reserves a directional call for genuine trend agreement across price/SMA50/SMA200/slope.
 
-### Regime Shrinkage
+### 8. Regime Shrinkage
 In choppy markets (ADX < 25):
 ```
 p_adjusted = 0.5 + (p_raw - 0.5) * 0.55
 ```
-Signals are pulled 45% toward neutral to reflect lower predictability.
+Signals are pulled 45% toward neutral to reflect lower predictability in sideways regimes.
 
-### Probability Calibration
-The Logistic Regression stacking layer is trained on OOF predictions, which provides partial calibration. However, calibration is **not guaranteed**. Brier Score and ROC-AUC are reported for honest assessment.
-
-### Confidence Score
+### 9. Confidence Score
 ```
 confidence = (
     prob_strength     * 0.35  +  # |p - 0.5| * 2
@@ -211,7 +235,7 @@ confidence = (
     model_agreement   * 0.10     # 1 - |xgb_p - lstm_p|
 ) * 100
 ```
-Clipped to [5, 95]. This score reflects how much to trust the recommendation, **not** the probability of being correct.
+Clipped to [5, 95]. Reflects signal clarity and data quality, **not** guaranteed future profitability.
 
 ---
 
@@ -219,11 +243,11 @@ Clipped to [5, 95]. This score reflects how much to trust the recommendation, **
 
 | Limitation | Impact |
 |---|---|
-| `yfinance` data quality | Adjusted prices may differ from other sources; dividends/splits may affect historical returns |
+| `yfinance` data quality | Adjusted prices may differ from institutional sources; dividends/splits may affect historical returns |
 | No point-in-time fundamentals | P/E is a rule-based signal only — using today's P/E for all historical rows would introduce look-ahead bias |
-| No intraday data | All analysis uses daily OHLCV |
-| LSTM unavailable on Python 3.14 | PyTorch wheels not yet released for Python 3.14; LSTM auto-disabled |
-| ~20 day horizon only | Not designed for day-trading or long-term (>1 year) analysis |
-| Backtest ≠ live trading | No transaction costs, slippage, or liquidity constraints |
-| Model uncertainty | The model can be wrong. High confidence ≠ guaranteed profit |
-| Regime changes | A model trained on historical regimes may not adapt to unprecedented market conditions |
+| No intraday data | All analysis uses daily OHLCV bars |
+| LSTM unavailable on Python 3.14 | PyTorch wheels not yet released for Python 3.14; system gracefully falls back to XGBoost-only |
+| ~20 day horizon only | Not designed for day-trading or long-term (>1 year) macro holding |
+| Model uncertainty | The model can be wrong. High confidence indicates signal alignment, not guaranteed profit |
+| Regime changes | Historical patterns may not predict unprecedented market shifts or black-swan macro events |
+

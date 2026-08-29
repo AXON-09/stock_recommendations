@@ -191,60 +191,60 @@ def fetch_raw_data(ticker: str, period: str = cfg.HISTORY_PERIOD_FEATURES) -> pd
 def fetch_info(ticker: str) -> dict:
     """
     Fetch fundamental metadata with multi-tier fallback:
-    1. yf.Ticker.info
+    1. yf.Ticker.info (uses mock in unit tests and standard yfinance locally)
     2. Yahoo v7 Quote API authenticated with session cookie + crumb
-    3. EPS-based P/E calculation fallback
+    3. Google Finance live P/E fallback (for cloud IPs)
     4. Curated sector mappings for Indian/US stocks
     """
     info: dict = {}
 
-    # Tier 1: Yahoo v7 Quote API with session crumb (most reliable on cloud IPs)
-    crumb = _get_crumb()
-    for domain in ["https://query2.finance.yahoo.com", "https://query1.finance.yahoo.com"]:
-        try:
-            url = f"{domain}/v7/finance/quote?symbols={ticker}"
-            if crumb:
-                url += f"&crumb={crumb}"
-            r = _SESSION.get(url, timeout=4)
-            if r.status_code == 200:
-                results = r.json().get("quoteResponse", {}).get("result", [])
-                if results and isinstance(results[0], dict):
-                    q = results[0]
-                    for k, v in q.items():
-                        info[k] = v
-                    if "trailingPE" in q:
-                        info["trailingPE"] = q["trailingPE"]
-                    elif q.get("epsTrailingTwelveMonths") and q.get("regularMarketPrice"):
-                        eps = q["epsTrailingTwelveMonths"]
-                        price = q["regularMarketPrice"]
-                        if eps and eps > 0 and price and price > 0:
-                            info["trailingPE"] = price / eps
-                    if "forwardPE" in q:
-                        info["forwardPE"] = q["forwardPE"]
-                    if "priceToBook" in q:
-                        info["priceToBook"] = q["priceToBook"]
-                    if "sector" in q:
-                        info["sector"] = q["sector"]
-                    break
-        except Exception:
-            continue
+    # Tier 1: yfinance info (handles unit tests / mocks and direct yfinance)
+    try:
+        raw = yf.Ticker(ticker, session=_SESSION).info
+        if isinstance(raw, dict) and len(raw) > 0:
+            info = dict(raw)
+    except Exception:
+        pass
 
-    # Tier 2: yfinance info fallback
-    if not info.get("trailingPE") and not info.get("forwardPE"):
-        try:
-            raw = yf.Ticker(ticker, session=_SESSION).info
-            if isinstance(raw, dict) and len(raw) > 5:
-                for k, v in raw.items():
-                    if k not in info:
-                        info[k] = v
-        except Exception:
-            pass
+    # Tier 2: Yahoo v7 Quote API with session crumb (if info empty / missing fields)
+    if not info or ("trailingPE" not in info and "quoteType" not in info):
+        crumb = _get_crumb()
+        for domain in ["https://query2.finance.yahoo.com", "https://query1.finance.yahoo.com"]:
+            try:
+                url = f"{domain}/v7/finance/quote?symbols={ticker}"
+                if crumb:
+                    url += f"&crumb={crumb}"
+                r = _SESSION.get(url, timeout=4)
+                if r.status_code == 200:
+                    results = r.json().get("quoteResponse", {}).get("result", [])
+                    if results and isinstance(results[0], dict):
+                        q = results[0]
+                        for k, v in q.items():
+                            if k not in info:
+                                info[k] = v
+                        if "trailingPE" in q:
+                            info["trailingPE"] = q["trailingPE"]
+                        elif q.get("epsTrailingTwelveMonths") and q.get("regularMarketPrice"):
+                            eps = q["epsTrailingTwelveMonths"]
+                            price = q["regularMarketPrice"]
+                            if eps and eps > 0 and price and price > 0:
+                                info["trailingPE"] = price / eps
+                        if "forwardPE" in q:
+                            info["forwardPE"] = q["forwardPE"]
+                        if "priceToBook" in q:
+                            info["priceToBook"] = q["priceToBook"]
+                        if "sector" in q:
+                            info["sector"] = q["sector"]
+                        break
+            except Exception:
+                continue
 
     # Tier 3: Google Finance live P/E fallback (100% cloud-reliable)
-    if not info.get("trailingPE"):
+    if not info.get("trailingPE") and not info.get("is_etf") and info.get("quoteType") != "ETF":
         g_pe = _get_google_pe(ticker)
         if g_pe:
             info["trailingPE"] = g_pe
+
 
     # Tier 4: Sector resolution fallback
     sec = info.get("sector")

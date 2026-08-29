@@ -189,6 +189,34 @@
       </div>
     </div>
 
+    <!-- Why this recommendation? (SHAP Feature Contributions) -->
+    <div class="card glass" id="shap-card">
+      <div class="card-header-flex">
+        <h2 class="card-title">WHY THIS RECOMMENDATION? — SHAP EXPLAINABILITY</h2>
+        <span class="card-subtag">Feature contributions to XGBoost prediction</span>
+      </div>
+      <div id="shap-content">
+        <div class="shap-grid">
+          <!-- Positive Contributors -->
+          <div class="shap-col">
+            <div class="shap-col-header green-header">
+              <span>Top Positive Contributors (Bullish)</span>
+            </div>
+            <div id="shap-pos-list" class="shap-list"></div>
+          </div>
+          <!-- Negative Contributors -->
+          <div class="shap-col">
+            <div class="shap-col-header red-header">
+              <span>Top Negative Contributors (Bearish)</span>
+            </div>
+            <div id="shap-neg-list" class="shap-list"></div>
+          </div>
+        </div>
+        <p id="shap-summary" class="shap-summary-note"></p>
+      </div>
+      <div id="shap-unavailable" class="hidden shap-unavail-note"></div>
+    </div>
+
     <!-- Signals + Regime row -->
     <div class="cards-row">
 
@@ -246,6 +274,52 @@
       </div>
     </div>
 
+    <!-- Strategy Benchmark Comparison -->
+    <div class="card glass" id="benchmark-card">
+      <div class="card-header-flex">
+        <h2 class="card-title">STRATEGY BENCHMARK COMPARISON</h2>
+        <span id="benchmark-period-label" class="card-subtag">Identical period · $100k capital · 0.10% fee · 0.05% slippage</span>
+      </div>
+      
+      <!-- Metrics Table -->
+      <div class="table-responsive">
+        <table class="benchmark-table">
+          <thead>
+            <tr>
+              <th>Strategy</th>
+              <th>Total Return</th>
+              <th>CAGR</th>
+              <th>Sharpe Ratio</th>
+              <th>Max Drawdown</th>
+              <th>Volatility</th>
+              <th>Trades</th>
+              <th>Win Rate</th>
+            </tr>
+          </thead>
+          <tbody id="benchmark-table-body">
+            <tr><td colspan="8" style="text-align:center; color:var(--text-3); padding:1rem;">Loading strategy comparison...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Equity Curve Visual -->
+      <div class="chart-container">
+        <h3 class="chart-title">Synchronized Portfolio Equity Curves ($)</h3>
+        <div class="chart-legend">
+          <span class="legend-item"><span class="legend-dot dot-qv"></span> QuantView</span>
+          <span class="legend-item"><span class="legend-dot dot-bh"></span> Buy & Hold</span>
+          <span class="legend-item"><span class="legend-dot dot-sma"></span> SMA 50/200</span>
+        </div>
+        <svg id="equity-chart" class="equity-chart" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+      </div>
+
+      <!-- Transaction Cost Sensitivity -->
+      <div class="cost-sensitivity-section">
+        <h3 class="chart-title">QuantView Transaction Cost Sensitivity</h3>
+        <div class="cost-pills-grid" id="cost-scenarios-grid"></div>
+      </div>
+    </div>
+
     <!-- Backtest -->
     <div class="card glass">
       <h2 class="card-title">WALK-FORWARD BACKTEST</h2>
@@ -256,6 +330,7 @@
         <div id="bt-advanced-grid" class="bt-grid bt-advanced"></div>
       </details>
     </div>
+
 
     <!-- Disclaimer -->
     <div class="disclaimer-box">
