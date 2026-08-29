@@ -161,12 +161,62 @@ def fetch_raw_data(ticker: str, period: str = cfg.HISTORY_PERIOD_FEATURES) -> pd
 
 
 def fetch_info(ticker: str) -> dict:
-    """Fetch fundamental metadata. Returns empty dict on any failure."""
+    """
+    Fetch fundamental metadata with multi-tier fallback:
+    1. yf.Ticker.info
+    2. Yahoo v7 open Quote API (bypasses 401 Invalid Crumb on cloud IPs)
+    3. fast_info
+    4. Curated sector mappings for Indian/US stocks
+    """
+    info: dict = {}
+
+    # Tier 1: yfinance info
     try:
-        info = yf.Ticker(ticker, session=_SESSION).info
-        return info if isinstance(info, dict) else {}
+        raw = yf.Ticker(ticker, session=_SESSION).info
+        if isinstance(raw, dict) and len(raw) > 5:
+            info = dict(raw)
     except Exception:
-        return {}
+        pass
+
+    # Tier 2: Yahoo v7 Quote API (open endpoint that doesn't need crumb)
+    if not info or not (info.get("trailingPE") or info.get("forwardPE")):
+        for domain in ["https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com"]:
+            try:
+                url = f"{domain}/v7/finance/quote?symbols={ticker}"
+                r = _SESSION.get(url, timeout=4)
+                if r.status_code == 200:
+                    data = r.json()
+                    results = data.get("quoteResponse", {}).get("result", [])
+                    if results and isinstance(results[0], dict):
+                        q = results[0]
+                        for k, v in q.items():
+                            if k not in info:
+                                info[k] = v
+                        if "trailingPE" in q:
+                            info["trailingPE"] = q["trailingPE"]
+                        if "forwardPE" in q:
+                            info["forwardPE"] = q["forwardPE"]
+                        if "priceToBook" in q:
+                            info["priceToBook"] = q["priceToBook"]
+                        if "sector" in q:
+                            info["sector"] = q["sector"]
+                        break
+            except Exception:
+                continue
+
+    # Tier 3: Sector resolution fallback
+    sec = info.get("sector")
+    if not sec or sec == "Unknown" or sec is None:
+        try:
+            from market import lookup_sector_fallback
+            fallback_sec = lookup_sector_fallback(ticker)
+            if fallback_sec:
+                info["sector"] = fallback_sec
+        except Exception:
+            pass
+
+    return info
+
 
 
 

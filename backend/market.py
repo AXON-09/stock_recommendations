@@ -132,6 +132,37 @@ INDIA_SECTOR_PEERS: dict = {
     ],
 }
 
+# Known US ticker sector fallbacks
+_US_KNOWN_SECTORS: dict[str, str] = {
+    "AAPL": "Technology", "MSFT": "Technology", "NVDA": "Technology",
+    "AVGO": "Technology", "ORCL": "Technology", "CSCO": "Technology",
+    "AMZN": "Consumer Cyclical", "TSLA": "Consumer Cyclical", "HD": "Consumer Cyclical",
+    "GOOG": "Communication Services", "GOOGL": "Communication Services", "META": "Communication Services", "NFLX": "Communication Services",
+    "JNJ": "Healthcare", "UNH": "Healthcare", "PFE": "Healthcare", "LLY": "Healthcare", "ABBV": "Healthcare",
+    "JPM": "Financial Services", "BAC": "Financial Services", "WFC": "Financial Services", "V": "Financial Services", "MA": "Financial Services",
+    "XOM": "Energy", "CVX": "Energy", "COP": "Energy", "SLB": "Energy",
+    "PG": "Consumer Defensive", "KO": "Consumer Defensive", "PEP": "Consumer Defensive", "WMT": "Consumer Defensive", "COST": "Consumer Defensive",
+    "CAT": "Industrials", "GE": "Industrials", "HON": "Industrials", "UNP": "Industrials", "BA": "Industrials",
+    "NEE": "Utilities", "DUK": "Utilities", "SO": "Utilities",
+    "LIN": "Materials", "APD": "Materials", "SHW": "Materials",
+    "PLD": "Real Estate", "AMT": "Real Estate", "EQIX": "Real Estate",
+}
+
+def lookup_sector_fallback(ticker: str) -> Optional[str]:
+    """Return known sector when Yahoo Finance metadata is throttled or missing."""
+    t_clean = ticker.upper().strip()
+    # Check Indian sectors
+    for sector, peers in INDIA_SECTOR_PEERS.items():
+        for p in peers:
+            if t_clean == p.upper() or t_clean == p.split(".")[0].upper() or t_clean.startswith(p.split(".")[0].upper()):
+                return sector
+    # Check US sectors
+    base = t_clean.split(".")[0]
+    if base in _US_KNOWN_SECTORS:
+        return _US_KNOWN_SECTORS[base]
+    return None
+
+
 
 # ---------------------------------------------------------------------------
 # Ticker resolution
