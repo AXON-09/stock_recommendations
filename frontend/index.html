@@ -135,6 +135,74 @@
       </div>
     </div>
 
+    <!-- Groww-Style Interactive Stock Price Chart -->
+    <div class="card glass stock-chart-card" id="stock-chart-card">
+      <div class="chart-header-row">
+        <div class="chart-header-info">
+          <div class="chart-live-price-wrap">
+            <span id="chart-display-price" class="chart-display-price">—</span>
+            <span id="chart-price-diff" class="chart-price-diff">—</span>
+          </div>
+          <p id="chart-display-date" class="chart-display-date">Hover or drag across the chart to inspect price history</p>
+        </div>
+        <div class="timeframe-selector" id="timeframe-selector">
+          <button class="tf-btn" data-tf="1M">1M</button>
+          <button class="tf-btn" data-tf="3M">3M</button>
+          <button class="tf-btn" data-tf="6M">6M</button>
+          <button class="tf-btn active" data-tf="1Y">1Y</button>
+          <button class="tf-btn" data-tf="ALL">ALL</button>
+        </div>
+      </div>
+
+      <!-- Chart Canvas & SVG Stage with Groww Interactive Crosshair -->
+      <div class="groww-chart-stage" id="groww-chart-stage">
+        <svg id="groww-chart-svg" class="groww-chart-svg" viewBox="0 0 850 280" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="groww-area-grad-green" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#00d09c" stop-opacity="0.35" />
+              <stop offset="100%" stop-color="#00d09c" stop-opacity="0.0" />
+            </linearGradient>
+            <linearGradient id="groww-area-grad-red" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#eb5b5b" stop-opacity="0.35" />
+              <stop offset="100%" stop-color="#eb5b5b" stop-opacity="0.0" />
+            </linearGradient>
+          </defs>
+          <g id="groww-grid-layer"></g>
+          <path id="groww-area-path" fill="url(#groww-area-grad-green)" d="" />
+          <path id="groww-line-path" fill="none" stroke="#00d09c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="" />
+          <path id="groww-sma50-path" fill="none" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="4 3" d="" />
+          <path id="groww-sma200-path" fill="none" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="4 3" d="" />
+
+          <!-- Interactive Pointer Lines & Dot -->
+          <g id="groww-crosshair-group" style="display: none;">
+            <line id="groww-crosshair-v" class="groww-pointer-v" x1="0" y1="10" x2="0" y2="250" />
+            <line id="groww-crosshair-h" class="groww-pointer-h" x1="50" y1="0" x2="830" y2="0" />
+            <circle id="groww-pointer-dot-outer" class="groww-pointer-dot-pulse" cx="0" cy="0" r="7" />
+            <circle id="groww-pointer-dot-inner" class="groww-pointer-dot" cx="0" cy="0" r="3.5" />
+          </g>
+        </svg>
+
+        <!-- HTML Interactive Axis Badges & Floating Tooltip -->
+        <div id="groww-badge-x" class="groww-axis-badge groww-badge-x" style="display: none;"></div>
+        <div id="groww-badge-y" class="groww-axis-badge groww-badge-y" style="display: none;"></div>
+        <div id="groww-tooltip-card" class="groww-tooltip-card" style="display: none;">
+          <div class="gt-header" id="gt-date">—</div>
+          <div class="gt-row"><span class="gt-lbl">Close:</span> <strong id="gt-close" class="gt-val">—</strong></div>
+          <div class="gt-row"><span class="gt-lbl">Open:</span> <span id="gt-open" class="gt-sub">—</span></div>
+          <div class="gt-row" id="gt-sma-row"><span class="gt-lbl">SMA 50 / 200:</span> <span id="gt-sma" class="gt-sub">—</span></div>
+        </div>
+      </div>
+      
+      <div class="chart-footer-row">
+        <div class="chart-indicators-legend">
+          <span class="c-legend-item"><span class="c-legend-line line-main"></span> Price</span>
+          <span class="c-legend-item"><span class="c-legend-line line-sma50"></span> SMA 50</span>
+          <span class="c-legend-item"><span class="c-legend-line line-sma200"></span> SMA 200</span>
+        </div>
+        <div class="chart-hint-note">Desktop: Hover · Mobile: Touch &amp; Drag</div>
+      </div>
+    </div>
+
     <!-- Confidence + Models row -->
     <div class="cards-row">
 

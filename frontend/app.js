@@ -496,7 +496,7 @@ function renderExplanation(data) {
   summary.textContent = `Baseline model expectation: ${basePct}% → Net feature impact adjusted output to ${outPct}%.`;
 }
 
-async function fetchAndRenderBenchmark(ticker) {
+async function fetchAndRenderBenchmark(ticker, curSym = '$') {
   const tableBody = document.getElementById('benchmark-table-body');
   const scenariosGrid = document.getElementById('cost-scenarios-grid');
   const periodLabel = document.getElementById('benchmark-period-label');
@@ -507,9 +507,10 @@ async function fetchAndRenderBenchmark(ticker) {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    const sym = data.currency_symbol || curSym || '$';
 
     if (periodLabel && data.period) {
-      periodLabel.textContent = `${data.period.start} to ${data.period.end} (${data.period.trading_days} sessions) · $100k capital · 0.10% fee · 0.05% slippage`;
+      periodLabel.textContent = `${data.period.start} to ${data.period.end} (${data.period.trading_days} sessions) · ${sym}100k capital · 0.10% fee · 0.05% slippage`;
     }
 
     // 1. Populate Metrics Table
@@ -537,7 +538,7 @@ async function fetchAndRenderBenchmark(ticker) {
 
     // 2. Render SVG Equity Curves
     if (svg && data.equity_curve && data.equity_curve.length > 1) {
-      renderEquityChart(svg, data.equity_curve);
+      renderEquityChart(svg, data.equity_curve, sym);
     }
 
     // 3. Render Cost Scenarios
@@ -564,12 +565,295 @@ async function fetchAndRenderBenchmark(ticker) {
   }
 }
 
-function renderEquityChart(svg, points) {
+// ── Groww-Style Stock Price Chart ──────────────────────────────────────────────
+let _priceHistory     = [];
+let _chartCurrency    = '$';
+let _activeTimeframe  = '1Y';
+let _activeSubset     = [];
+let _chartScales      = null;
+let _growwInitialized = false;
+
+function formatGrowwPrice(v, sym = _chartCurrency) {
+  if (v == null || !isFinite(v)) return '—';
+  return `${sym}${Number(v).toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatGrowwDate(dStr) {
+  if (!dStr) return '—';
+  const d = new Date(dStr);
+  if (isNaN(d.getTime())) return dStr;
+  const day = d.getDate();
+  const month = d.toLocaleString('en-US', { month: 'short' });
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
+}
+
+function filterPriceHistory(tf) {
+  if (!_priceHistory || _priceHistory.length === 0) return [];
+  const n = _priceHistory.length;
+  let count = n;
+  if (tf === '1M') count = Math.min(n, 22);
+  else if (tf === '3M') count = Math.min(n, 66);
+  else if (tf === '6M') count = Math.min(n, 132);
+  else if (tf === '1Y') count = Math.min(n, 252);
+  else if (tf === 'ALL') count = n;
+  return _priceHistory.slice(n - count);
+}
+
+function drawGrowwStockChart() {
+  const svg          = document.getElementById('groww-chart-svg');
+  const stage        = document.getElementById('groww-chart-stage');
+  const priceDisplay = document.getElementById('chart-display-price');
+  const diffDisplay  = document.getElementById('chart-price-diff');
+  const dateDisplay  = document.getElementById('chart-display-date');
+  const gridLayer    = document.getElementById('groww-grid-layer');
+  const linePath     = document.getElementById('groww-line-path');
+  const areaPath     = document.getElementById('groww-area-path');
+  const sma50Path    = document.getElementById('groww-sma50-path');
+  const sma200Path   = document.getElementById('groww-sma200-path');
+
+  if (!svg || !_priceHistory || _priceHistory.length === 0) return;
+
+  _activeSubset = filterPriceHistory(_activeTimeframe);
+  const pts = _activeSubset;
+  const n = pts.length;
+  if (n < 2) return;
+
+  const w = 850;
+  const h = 280;
+  const padLeft = 65;
+  const padRight = 20;
+  const padTop = 20;
+  const padBottom = 35;
+
+  const closes = pts.map(p => p.close);
+  let minP = Math.min(...closes);
+  let maxP = Math.max(...closes);
+  const pDiff = maxP - minP;
+  minP = minP - (pDiff * 0.05 || minP * 0.02);
+  maxP = maxP + (pDiff * 0.05 || maxP * 0.02);
+  const rangeP = Math.max(0.001, maxP - minP);
+
+  const getX = i => padLeft + (i / (n - 1)) * (w - padLeft - padRight);
+  const getY = p => padTop + (1 - (p - minP) / rangeP) * (h - padTop - padBottom);
+
+  _chartScales = { w, h, padLeft, padRight, padTop, padBottom, minP, maxP, rangeP, getX, getY };
+
+  const startP = pts[0].close;
+  const lastP = pts[n - 1].close;
+  const totalChange = lastP - startP;
+  const totalChangePct = (totalChange / startP) * 100;
+  const isPositive = totalChange >= 0;
+
+  const mainColor = isPositive ? '#00d09c' : '#eb5b5b';
+  linePath.setAttribute('stroke', mainColor);
+  areaPath.setAttribute('fill', isPositive ? 'url(#groww-area-grad-green)' : 'url(#groww-area-grad-red)');
+
+  // Build Price Path & Area Path
+  const lineCoords = pts.map((p, i) => `${getX(i).toFixed(1)},${getY(p.close).toFixed(1)}`);
+  linePath.setAttribute('d', `M ${lineCoords.join(' L ')}`);
+
+  const areaD = `M ${getX(0).toFixed(1)},${(h - padBottom).toFixed(1)} L ${lineCoords.join(' L ')} L ${getX(n - 1).toFixed(1)},${(h - padBottom).toFixed(1)} Z`;
+  areaPath.setAttribute('d', areaD);
+
+  // SMA50 & SMA200 paths
+  const sma50Coords = [];
+  const sma200Coords = [];
+  pts.forEach((p, i) => {
+    if (p.sma50 != null && p.sma50 >= minP && p.sma50 <= maxP) {
+      sma50Coords.push(`${getX(i).toFixed(1)},${getY(p.sma50).toFixed(1)}`);
+    }
+    if (p.sma200 != null && p.sma200 >= minP && p.sma200 <= maxP) {
+      sma200Coords.push(`${getX(i).toFixed(1)},${getY(p.sma200).toFixed(1)}`);
+    }
+  });
+
+  sma50Path.setAttribute('d', sma50Coords.length > 1 ? `M ${sma50Coords.join(' L ')}` : '');
+  sma200Path.setAttribute('d', sma200Coords.length > 1 ? `M ${sma200Coords.join(' L ')}` : '');
+
+  // Grid Lines & Labels
+  const gridSteps = 4;
+  let gridHTML = '';
+  for (let s = 0; s <= gridSteps; s++) {
+    const val = minP + (s / gridSteps) * rangeP;
+    const yPos = getY(val).toFixed(1);
+    gridHTML += `<line x1="${padLeft}" y1="${yPos}" x2="${w - padRight}" y2="${yPos}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="3 3"/>`;
+    gridHTML += `<text x="${padLeft - 8}" y="${Number(yPos) + 4}" fill="hsl(215 15% 55%)" font-size="10.5" text-anchor="end" font-family="monospace">${formatGrowwPrice(val, _chartCurrency)}</text>`;
+  }
+
+  // X Axis Date labels
+  const dateSteps = Math.min(5, n);
+  for (let s = 0; s < dateSteps; s++) {
+    const idx = Math.round((s / (dateSteps - 1)) * (n - 1));
+    const xPos = getX(idx).toFixed(1);
+    const dText = formatGrowwDate(pts[idx].date);
+    const anchor = s === 0 ? 'start' : s === dateSteps - 1 ? 'end' : 'middle';
+    gridHTML += `<text x="${xPos}" y="${h - 8}" fill="hsl(215 15% 55%)" font-size="10.5" text-anchor="${anchor}" font-family="monospace">${dText}</text>`;
+  }
+  gridLayer.innerHTML = gridHTML;
+
+  // Header display
+  priceDisplay.textContent = formatGrowwPrice(lastP, _chartCurrency);
+  const sign = isPositive ? '+' : '';
+  diffDisplay.textContent = `${sign}${formatGrowwPrice(Math.abs(totalChange), _chartCurrency)} (${sign}${totalChangePct.toFixed(2)}%)`;
+  diffDisplay.className = `chart-price-diff ${isPositive ? 'diff-positive' : 'diff-negative'}`;
+  dateDisplay.textContent = `${formatGrowwDate(pts[0].date)} to ${formatGrowwDate(pts[n - 1].date)} · ${_activeTimeframe}`;
+
+  initGrowwPointerEvents();
+}
+
+function initGrowwPointerEvents() {
+  const stage        = document.getElementById('groww-chart-stage');
+  const crossGroup   = document.getElementById('groww-crosshair-group');
+  const lineV        = document.getElementById('groww-crosshair-v');
+  const lineH        = document.getElementById('groww-crosshair-h');
+  const dotPulse     = document.getElementById('groww-pointer-dot-outer');
+  const dotInner     = document.getElementById('groww-pointer-dot-inner');
+  const badgeX       = document.getElementById('groww-badge-x');
+  const badgeY       = document.getElementById('groww-badge-y');
+  const tooltip      = document.getElementById('groww-tooltip-card');
+  const gtDate       = document.getElementById('gt-date');
+  const gtClose      = document.getElementById('gt-close');
+  const gtOpen       = document.getElementById('gt-open');
+  const gtSma        = document.getElementById('gt-sma');
+  const priceDisplay = document.getElementById('chart-display-price');
+  const diffDisplay  = document.getElementById('chart-price-diff');
+  const dateDisplay  = document.getElementById('chart-display-date');
+
+  if (!stage || _growwInitialized) return;
+  _growwInitialized = true;
+
+  function updatePointer(e) {
+    if (!_activeSubset || _activeSubset.length < 2 || !_chartScales) return;
+
+    const rect = stage.getBoundingClientRect();
+    const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : null);
+    const clientY = e.clientY ?? (e.touches && e.touches[0] ? e.touches[0].clientY : null);
+    if (clientX == null) return;
+
+    const relX = clientX - rect.left;
+    const { w, h, padLeft, padRight, padTop, padBottom, getX, getY } = _chartScales;
+    const chartWidth = w - padLeft - padRight;
+    const stageWidth = rect.width;
+    const stageHeight = rect.height;
+
+    const scaleX = (relX / stageWidth) * w;
+    const clampedX = Math.max(padLeft, Math.min(w - padRight, scaleX));
+    const ratio = (clampedX - padLeft) / chartWidth;
+    const n = _activeSubset.length;
+    const idx = Math.max(0, Math.min(n - 1, Math.round(ratio * (n - 1))));
+    const pt = _activeSubset[idx];
+
+    const xSvg = getX(idx);
+    const ySvg = getY(pt.close);
+
+    const xPx = (xSvg / w) * stageWidth;
+    const yPx = (ySvg / h) * stageHeight;
+
+    crossGroup.style.display = 'block';
+    badgeX.style.display = 'block';
+    badgeY.style.display = 'block';
+    tooltip.style.display = 'block';
+
+    lineV.setAttribute('x1', xSvg.toFixed(1));
+    lineV.setAttribute('x2', xSvg.toFixed(1));
+    lineV.setAttribute('y1', padTop.toFixed(1));
+    lineV.setAttribute('y2', (h - padBottom).toFixed(1));
+
+    lineH.setAttribute('y1', ySvg.toFixed(1));
+    lineH.setAttribute('y2', ySvg.toFixed(1));
+    lineH.setAttribute('x1', padLeft.toFixed(1));
+    lineH.setAttribute('x2', (w - padRight).toFixed(1));
+
+    dotPulse.setAttribute('cx', xSvg.toFixed(1));
+    dotPulse.setAttribute('cy', ySvg.toFixed(1));
+    dotInner.setAttribute('cx', xSvg.toFixed(1));
+    dotInner.setAttribute('cy', ySvg.toFixed(1));
+
+    badgeX.textContent = formatGrowwDate(pt.date);
+    badgeX.style.left = `${xPx}px`;
+
+    badgeY.textContent = formatGrowwPrice(pt.close, _chartCurrency);
+    badgeY.style.top = `${yPx}px`;
+
+    gtDate.textContent = formatGrowwDate(pt.date);
+    gtClose.textContent = formatGrowwPrice(pt.close, _chartCurrency);
+    gtOpen.textContent = pt.open != null ? formatGrowwPrice(pt.open, _chartCurrency) : '—';
+    gtSma.textContent = `${pt.sma50 != null ? formatGrowwPrice(pt.sma50, _chartCurrency) : '—'} / ${pt.sma200 != null ? formatGrowwPrice(pt.sma200, _chartCurrency) : '—'}`;
+
+    const tooltipWidth = 150;
+    let tipLeft = xPx + 14;
+    if (tipLeft + tooltipWidth > stageWidth) {
+      tipLeft = xPx - tooltipWidth - 14;
+    }
+    let tipTop = yPx - 40;
+    if (tipTop < 10) tipTop = 10;
+    if (tipTop > stageHeight - 95) tipTop = stageHeight - 95;
+
+    tooltip.style.left = `${Math.max(10, tipLeft)}px`;
+    tooltip.style.top = `${tipTop}px`;
+
+    priceDisplay.textContent = formatGrowwPrice(pt.close, _chartCurrency);
+    const startP = _activeSubset[0].close;
+    const diff = pt.close - startP;
+    const diffPct = (diff / startP) * 100;
+    const sign = diff >= 0 ? '+' : '';
+    diffDisplay.textContent = `${sign}${formatGrowwPrice(Math.abs(diff), _chartCurrency)} (${sign}${diffPct.toFixed(2)}%)`;
+    diffDisplay.className = `chart-price-diff ${diff >= 0 ? 'diff-positive' : 'diff-negative'}`;
+    dateDisplay.textContent = `${formatGrowwDate(pt.date)} (Selected)`;
+  }
+
+  function hidePointer() {
+    crossGroup.style.display = 'none';
+    badgeX.style.display = 'none';
+    badgeY.style.display = 'none';
+    tooltip.style.display = 'none';
+
+    if (_activeSubset && _activeSubset.length > 0) {
+      const n = _activeSubset.length;
+      const startP = _activeSubset[0].close;
+      const lastP = _activeSubset[n - 1].close;
+      const diff = lastP - startP;
+      const diffPct = (diff / startP) * 100;
+      const sign = diff >= 0 ? '+' : '';
+      priceDisplay.textContent = formatGrowwPrice(lastP, _chartCurrency);
+      diffDisplay.textContent = `${sign}${formatGrowwPrice(Math.abs(diff), _chartCurrency)} (${sign}${diffPct.toFixed(2)}%)`;
+      diffDisplay.className = `chart-price-diff ${diff >= 0 ? 'diff-positive' : 'diff-negative'}`;
+      dateDisplay.textContent = `${formatGrowwDate(_activeSubset[0].date)} to ${formatGrowwDate(_activeSubset[n - 1].date)} · ${_activeTimeframe}`;
+    }
+  }
+
+  stage.addEventListener('pointermove', updatePointer);
+  stage.addEventListener('pointerdown', updatePointer);
+  stage.addEventListener('pointerleave', hidePointer);
+  stage.addEventListener('pointerup', hidePointer);
+  stage.addEventListener('pointercancel', hidePointer);
+
+  document.querySelectorAll('.tf-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      _activeTimeframe = btn.dataset.tf;
+      drawGrowwStockChart();
+    });
+  });
+}
+
+function renderStockChart(data) {
+  _priceHistory  = data.price_history || [];
+  _chartCurrency = data.market?.currency_symbol || (data.market?.is_india ? '₹' : '$');
+  drawGrowwStockChart();
+}
+
+function renderEquityChart(svg, points, sym = '$') {
   const w = 800;
   const h = 220;
   const padTop = 20;
   const padBottom = 25;
-  const padLeft = 60;
+  const padLeft = 65;
   const padRight = 20;
 
   const allVals = [];
@@ -604,9 +888,9 @@ function renderEquityChart(svg, points) {
     <line x1="${padLeft}" y1="${gridY3}" x2="${w - padRight}" y2="${gridY3}" stroke="hsl(222 14% 18%)" stroke-dasharray="3,3"/>
     
     <!-- Y Labels -->
-    <text x="${padLeft - 8}" y="${Number(gridY1) + 4}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">$${Math.round(maxV).toLocaleString()}</text>
-    <text x="${padLeft - 8}" y="${Number(gridY2) + 4}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">$${Math.round(midV).toLocaleString()}</text>
-    <text x="${padLeft - 8}" y="${Number(gridY3) + 4}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">$${Math.round(minV).toLocaleString()}</text>
+    <text x="${padLeft - 8}" y="${Number(gridY1) + 4}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">${sym}${Math.round(maxV).toLocaleString('en-IN')}</text>
+    <text x="${padLeft - 8}" y="${Number(gridY2) + 4}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">${sym}${Math.round(midV).toLocaleString('en-IN')}</text>
+    <text x="${padLeft - 8}" y="${Number(gridY3) + 4}" fill="hsl(210 10% 50%)" font-size="10" text-anchor="end" font-family="monospace">${sym}${Math.round(minV).toLocaleString('en-IN')}</text>
 
     <!-- X Labels -->
     <text x="${padLeft}" y="${h - 6}" fill="hsl(210 10% 50%)" font-size="10" font-family="monospace">${points[0].date}</text>
@@ -624,6 +908,7 @@ function renderAll(data) {
   window._qvLastData = data;
 
   renderHero(data);
+  renderStockChart(data);
   renderConfidence(data);
   renderModels(data);
   renderExplanation(data);
@@ -631,7 +916,7 @@ function renderAll(data) {
   renderRegime(data);
   renderVolatility(data);
   renderValuation(data);
-  fetchAndRenderBenchmark(data.ticker);
+  fetchAndRenderBenchmark(data.ticker, data.market?.currency_symbol || (data.market?.is_india ? '₹' : '$'));
   renderBacktest(data);
   renderDisclaimer(data);
 
@@ -640,6 +925,7 @@ function renderAll(data) {
 
   showResult();
 }
+
 
 
 // ── API call ──────────────────────────────────────────────────────────────────

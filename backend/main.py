@@ -249,10 +249,22 @@ class BenchmarkPeriodModel(BaseModel):
     trading_days: int
 
 
+class PriceHistoryPoint(BaseModel):
+    date:   str
+    close:  float
+    open:   Optional[float] = None
+    high:   Optional[float] = None
+    low:    Optional[float] = None
+    volume: Optional[float] = None
+    sma50:  Optional[float] = None
+    sma200: Optional[float] = None
+
+
 class BenchmarkResponse(BaseModel):
     success:          bool = True
     ticker:           str
     display_ticker:   str
+    currency_symbol:  str  = "$"
     period:           BenchmarkPeriodModel
     starting_capital: float
     transaction_cost: float
@@ -282,7 +294,9 @@ class RecommendationResponse(BaseModel):
     backtest:         BacktestInfo
     cache:            CacheInfo
     explanation:      Optional[ExplanationInfo] = None
+    price_history:    List[PriceHistoryPoint] = Field(default_factory=list, description="Historical price points for Groww-style interactive chart")
     disclaimer:       str
+
 
 
 class ErrorResponse(BaseModel):
@@ -456,6 +470,25 @@ def get_recommendation(
         log.exception("[%s] Prediction failed", resolved)
         raise HTTPException(status_code=500, detail=f"Prediction error: {exc}")
 
+    # Build historical price points for interactive Groww-style charting
+    price_history: List[PriceHistoryPoint] = []
+    if "Close" in entry.df.columns:
+        df_chart = entry.df.tail(500)
+        for idx, row in df_chart.iterrows():
+            d_str = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
+            price_history.append(
+                PriceHistoryPoint(
+                    date=d_str,
+                    close=round(float(row["Close"]), 2),
+                    open=round(float(row["Open"]), 2) if "Open" in row and pd.notna(row["Open"]) else None,
+                    high=round(float(row["High"]), 2) if "High" in row and pd.notna(row["High"]) else None,
+                    low=round(float(row["Low"]), 2) if "Low" in row and pd.notna(row["Low"]) else None,
+                    volume=float(row["Volume"]) if "Volume" in row and pd.notna(row["Volume"]) else None,
+                    sma50=round(float(row["sma50"]), 2) if "sma50" in row and pd.notna(row["sma50"]) else None,
+                    sma200=round(float(row["sma200"]), 2) if "sma200" in row and pd.notna(row["sma200"]) else None,
+                )
+            )
+
     # ── Assemble response ─────────────────────────────────────────────────
     bm = result.backtest_metrics
     cc = result.confidence_components
@@ -476,7 +509,7 @@ def get_recommendation(
             is_etf=mkt.is_etf,
             etf_category=mkt.etf_category,
         ),
-        price=features.price,
+        price=round(features.price, 2),
         sector=features.sector,
         recommendation=result.recommendation,
         probability=result.ensemble_prob,
@@ -572,6 +605,7 @@ def get_recommendation(
             )
             if result.explanation is not None else None
         ),
+        price_history=price_history,
         disclaimer=_DISCLAIMER,
     )
 
@@ -601,6 +635,7 @@ def compare_strategies(
     try:
         resolved = resolve_ticker_with_fallback(ticker_clean)
         disp_ticker = resolved.removesuffix(".NS").removesuffix(".BO") if resolved.endswith((".NS", ".BO")) else resolved
+        mkt = market_info_for_ticker(resolved)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -657,6 +692,7 @@ def compare_strategies(
         success=True,
         ticker=resolved,
         display_ticker=disp_ticker,
+        currency_symbol=mkt.currency_symbol,
         period=BenchmarkPeriodModel(
             start=res.start_date,
             end=res.end_date,
