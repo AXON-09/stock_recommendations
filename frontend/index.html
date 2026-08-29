@@ -333,18 +333,46 @@
 
         <!-- HERO Card -->
         <div class="card glass hero-card">
-          <div class="hero-left">
-            <div class="hero-ticker-row">
-              <h1 id="res-ticker" class="hero-ticker">—</h1>
-              <div id="market-badge" class="market-badge">
-                <span id="mb-exchange">—</span>
-                <span class="mb-sep">•</span>
-                <span id="mb-country">—</span>
-                <span id="mb-etf-wrap" class="hidden"><span class="mb-sep">•</span><span id="mb-etf">ETF</span></span>
-              </div>
+          <div class="hero-left-wrapper">
+            <div class="asset-logo-container" id="hero-logo-wrap">
+              <img id="hero-company-logo" class="asset-logo-img" alt="Official Logo" loading="lazy" />
             </div>
-            <p id="res-sector" class="hero-sector">—</p>
-            <p id="cache-note" class="cache-note">—</p>
+            <div class="hero-left">
+              <div class="hero-top-title-row">
+                <h1 id="res-company-name" class="hero-company-name">—</h1>
+                <!-- Optional three-dot action menu -->
+                <div class="hero-menu-wrap">
+                  <button id="hero-three-dots-btn" class="hero-three-dots-btn" title="Stock Actions" aria-label="Stock Actions">
+                    <svg viewBox="0 0 24 24" fill="currentColor" class="three-dots-svg"><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="19" r="2"></circle></svg>
+                  </button>
+                  <div id="hero-action-dropdown" class="hero-action-dropdown hidden">
+                    <button class="hero-dropdown-item" id="action-copy-ticker">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                      <span>Copy Ticker</span>
+                    </button>
+                    <button class="hero-dropdown-item" id="action-view-tradingview">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>
+                      <span>TradingView Chart</span>
+                    </button>
+                    <button class="hero-dropdown-item" id="action-view-yahoo">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                      <span>Yahoo Finance</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="hero-ticker-row">
+                <span id="res-ticker" class="hero-ticker-tag">—</span>
+                <div id="market-badge" class="market-badge">
+                  <span id="mb-exchange">—</span>
+                  <span class="mb-sep">•</span>
+                  <span id="mb-country">—</span>
+                  <span id="mb-etf-wrap" class="hidden"><span class="mb-sep">•</span><span id="mb-etf">ETF</span></span>
+                </div>
+              </div>
+              <p id="res-sector" class="hero-sector">—</p>
+              <p id="cache-note" class="cache-note">—</p>
+            </div>
           </div>
           <div class="hero-right">
             <div class="price-row">
@@ -682,8 +710,10 @@
                 <tr class="wl-row" data-ticker="RELIANCE">
                   <td>
                     <div class="wl-asset-cell">
-                      <div class="wl-logo-circle">R</div>
-                      <div><strong>RELIANCE</strong><span class="wl-subname">Reliance Industries</span></div>
+                      <div class="wl-logo-container">
+                        <img class="wl-logo-img" data-ticker="RELIANCE" alt="RELIANCE" loading="lazy" />
+                      </div>
+                      <div><strong>Reliance Industries</strong><span class="wl-subname">NSE · RELIANCE</span></div>
                     </div>
                   </td>
                   <td><span class="wl-exch">NSE</span></td>
@@ -696,8 +726,10 @@
                 <tr class="wl-row" data-ticker="TCS">
                   <td>
                     <div class="wl-asset-cell">
-                      <div class="wl-logo-circle">T</div>
-                      <div><strong>TCS</strong><span class="wl-subname">Tata Consultancy</span></div>
+                      <div class="wl-logo-container">
+                        <img class="wl-logo-img" data-ticker="TCS" alt="TCS" loading="lazy" />
+                      </div>
+                      <div><strong>Tata Consultancy Services</strong><span class="wl-subname">NSE · TCS</span></div>
                     </div>
                   </td>
                   <td><span class="wl-exch">NSE</span></td>
@@ -710,8 +742,10 @@
                 <tr class="wl-row" data-ticker="NVDA">
                   <td>
                     <div class="wl-asset-cell">
-                      <div class="wl-logo-circle">N</div>
-                      <div><strong>NVDA</strong><span class="wl-subname">NVIDIA Corp</span></div>
+                      <div class="wl-logo-container">
+                        <img class="wl-logo-img" data-ticker="NVDA" alt="NVDA" loading="lazy" />
+                      </div>
+                      <div><strong>NVIDIA Corporation</strong><span class="wl-subname">NASDAQ · NVDA</span></div>
                     </div>
                   </td>
                   <td><span class="wl-exch">NASDAQ</span></td>
@@ -724,8 +758,10 @@
                 <tr class="wl-row" data-ticker="AAPL">
                   <td>
                     <div class="wl-asset-cell">
-                      <div class="wl-logo-circle">A</div>
-                      <div><strong>AAPL</strong><span class="wl-subname">Apple Inc</span></div>
+                      <div class="wl-logo-container">
+                        <img class="wl-logo-img" data-ticker="AAPL" alt="AAPL" loading="lazy" />
+                      </div>
+                      <div><strong>Apple Inc.</strong><span class="wl-subname">NASDAQ · AAPL</span></div>
                     </div>
                   </td>
                   <td><span class="wl-exch">NASDAQ</span></td>
@@ -738,8 +774,10 @@
                 <tr class="wl-row" data-ticker="QQQ">
                   <td>
                     <div class="wl-asset-cell">
-                      <div class="wl-logo-circle">Q</div>
-                      <div><strong>QQQ</strong><span class="wl-subname">Invesco QQQ Trust</span></div>
+                      <div class="wl-logo-container">
+                        <img class="wl-logo-img" data-ticker="QQQ" alt="QQQ" loading="lazy" />
+                      </div>
+                      <div><strong>Invesco QQQ Trust</strong><span class="wl-subname">NASDAQ · QQQ</span></div>
                     </div>
                   </td>
                   <td><span class="wl-exch">NASDAQ</span></td>
@@ -856,6 +894,7 @@
 
 <script src="glossary.js"></script>
 <script src="infobox.js"></script>
+<script src="logos.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

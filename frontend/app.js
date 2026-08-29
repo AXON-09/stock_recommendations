@@ -164,7 +164,20 @@ function renderHero(data) {
   const mkt = data.market;
   const sym = mkt.currency_symbol || '$';
 
-  // Ticker + market badge
+  // 1. Official Company Logo (with smooth fade-in, caching, and placeholder fallback)
+  const logoImg = document.getElementById('hero-company-logo');
+  if (logoImg && window.QVLogos) {
+    window.QVLogos.renderLogo(logoImg, data.ticker, mkt.is_india, mkt.is_etf);
+  }
+
+  // 2. Bold Company Name
+  const companyNameEl = document.getElementById('res-company-name');
+  if (companyNameEl) {
+    companyNameEl.textContent = data.company_name ||
+      (window.QVLogos ? window.QVLogos.getCompanyName(data.ticker, data.display_ticker) : (data.display_ticker || data.ticker));
+  }
+
+  // 3. Ticker + market badge
   document.getElementById('res-ticker').textContent = data.display_ticker || data.ticker;
 
   const badge = document.getElementById('market-badge');
@@ -178,14 +191,11 @@ function renderHero(data) {
   if (mkt.is_india) badge.classList.add('india');
   else if (mkt.currency === 'USD') badge.classList.add('us');
 
-
-  // ETF badge segment — only shown when the ticker is genuinely an ETF/fund
+  // ETF badge segment
   const etfWrap = document.getElementById('mb-etf-wrap');
   etfWrap.classList.toggle('hidden', !mkt.is_etf);
 
-  // Sector / category line — for ETFs, show a real classification (never
-  // a bare "Unknown") when Yahoo Finance supplies enough metadata; only
-  // fall back to a generic ETF label when it genuinely doesn't.
+  // Sector / category line
   const sectorEl = document.getElementById('res-sector');
   if (mkt.is_etf) {
     sectorEl.textContent = mkt.etf_category || 'Exchange-Traded Fund';
@@ -222,6 +232,51 @@ function renderHero(data) {
   if (kpiRegime && data.market_regime) {
     kpiRegime.textContent = `Regime: ${data.market_regime.regime || 'Active'}`;
   }
+
+  // Setup three-dot action menu for active ticker
+  setupHeroActions(data);
+}
+
+function setupHeroActions(data) {
+  const menuBtn = document.getElementById('hero-three-dots-btn');
+  const dropdown = document.getElementById('hero-action-dropdown');
+  if (!menuBtn || !dropdown) return;
+
+  menuBtn.onclick = (e) => {
+    e.stopPropagation();
+    dropdown.classList.toggle('hidden');
+  };
+
+  const copyBtn = document.getElementById('action-copy-ticker');
+  if (copyBtn) {
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(data.display_ticker || data.ticker);
+      copyBtn.querySelector('span').textContent = 'Copied!';
+      setTimeout(() => {
+        copyBtn.querySelector('span').textContent = 'Copy Ticker';
+        dropdown.classList.add('hidden');
+      }, 1200);
+    };
+  }
+
+  const tvBtn = document.getElementById('action-view-tradingview');
+  if (tvBtn) {
+    tvBtn.onclick = () => {
+      const clean = (data.display_ticker || data.ticker).toUpperCase();
+      const prefix = data.market?.is_india ? 'NSE:' : (data.market?.exchange?.includes('NASDAQ') ? 'NASDAQ:' : 'NYSE:');
+      window.open(`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(prefix + clean)}`, '_blank');
+      dropdown.classList.add('hidden');
+    };
+  }
+
+  const yfBtn = document.getElementById('action-view-yahoo');
+  if (yfBtn) {
+    yfBtn.onclick = () => {
+      window.open(`https://finance.yahoo.com/quote/${encodeURIComponent(data.ticker)}`, '_blank');
+      dropdown.classList.add('hidden');
+    };
+  }
+}
 
   // Cache note
   const cache = data.cache;
@@ -1208,4 +1263,34 @@ if (sidebarToggleBtn && sidebarEl) {
 errorRetry.addEventListener('click', () => {
   if (_lastTicker) analyze(_lastTicker);
 });
+
+// Close three-dot dropdown on document click
+document.addEventListener('click', e => {
+  const dropdown = document.getElementById('hero-action-dropdown');
+  const menuBtn = document.getElementById('hero-three-dots-btn');
+  if (dropdown && !dropdown.classList.contains('hidden')) {
+    if (!dropdown.contains(e.target) && (!menuBtn || !menuBtn.contains(e.target))) {
+      dropdown.classList.add('hidden');
+    }
+  }
+});
+
+// Initialize watchlist logos
+function initWatchlistLogos() {
+  if (!window.QVLogos) return;
+  document.querySelectorAll('.wl-logo-img').forEach(img => {
+    const ticker = img.dataset.ticker;
+    if (ticker) {
+      const isIndia = ticker.includes('.NS') || ticker.includes('.BO') || ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'ITC', 'NIFTYBEES'].includes(ticker);
+      const isEtf = ticker.includes('BEES') || ['SPY', 'QQQ', 'VOO', 'VTI'].includes(ticker);
+      window.QVLogos.renderLogo(img, ticker, isIndia, isEtf);
+    }
+  });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initWatchlistLogos);
+} else {
+  initWatchlistLogos();
+}
 

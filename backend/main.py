@@ -121,6 +121,7 @@ class MarketInfoModel(BaseModel):
     is_india:        bool
     is_etf:          bool
     etf_category:    Optional[str] = Field(None, description="e.g. 'Gold ETF'. None for non-ETFs or when Yahoo doesn't supply enough metadata to classify.")
+    company_name:    Optional[str] = Field(None, description="Official company or ETF full name.")
 
 
 class RegimeInfo(BaseModel):
@@ -284,6 +285,8 @@ class RecommendationResponse(BaseModel):
     market:           MarketInfoModel
     price:            float
     sector:           str
+    company_name:     Optional[str] = Field(None, description="Official company or fund name")
+    logo_url:         Optional[str] = Field(None, description="Direct logo image URL if available")
     recommendation:   str  = Field(..., description="Buy | Sell | Hold")
     probability:      float = Field(..., description="Ensemble probability (0-1)")
     forecast_horizon: str  = Field("~20 trading sessions", description="Forecast horizon")
@@ -510,9 +513,12 @@ def get_recommendation(
             is_india=mkt.is_india,
             is_etf=mkt.is_etf,
             etf_category=mkt.etf_category,
+            company_name=mkt.company_name,
         ),
         price=round(features.price, 2),
         sector=features.sector,
+        company_name=mkt.company_name,
+        logo_url=None,
         recommendation=result.recommendation,
         probability=result.ensemble_prob,
         forecast_horizon="~20 trading sessions",

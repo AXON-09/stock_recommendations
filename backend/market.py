@@ -50,6 +50,7 @@ class MarketInfo:
     is_india:        bool
     is_etf:          bool
     etf_category:    Optional[str] = None
+    company_name:    Optional[str] = None
     """
     Short human-readable ETF/fund category, e.g. "Gold ETF", "Broad Market
     Index ETF". Derived from yfinance metadata (category / longName /
@@ -371,11 +372,14 @@ def get_market_info(ticker: str, yf_info: dict) -> MarketInfo:
     }
     country = CURRENCY_COUNTRY.get(currency, "United States" if currency == "USD" else "Global")
 
+    company_name = yf_info.get("longName") or yf_info.get("shortName") or yf_info.get("displayName") or None
+
     return MarketInfo(
         country=country, exchange=exchange,
         currency=currency, currency_symbol=currency_symbol,
         is_india=(currency == "INR"),
         is_etf=is_etf, etf_category=etf_category,
+        company_name=company_name,
     )
 
 
