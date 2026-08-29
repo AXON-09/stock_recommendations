@@ -409,6 +409,10 @@ class StockRecommender:
         if not TORCH_AVAILABLE or LSTMNet is None:
             return None
 
+        torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
+
         # Build sequences using only training data (no look-ahead)
         dummy_ctx = np.zeros((SEQUENCE_LEN, X_arr.shape[1]), dtype=np.float32)
         ctx  = np.concatenate([dummy_ctx, X_arr], axis=0)
@@ -424,7 +428,8 @@ class StockRecommender:
             torch.tensor(seqs,   dtype=torch.float32),
             torch.tensor(labels, dtype=torch.float32).unsqueeze(1),
         )
-        loader = DataLoader(ds, batch_size=64, shuffle=True)
+        generator = torch.Generator().manual_seed(42)
+        loader = DataLoader(ds, batch_size=64, shuffle=True, generator=generator)
         model.train()
         for _ in range(epochs):
             for xb, yb in loader:
@@ -503,6 +508,10 @@ class StockRecommender:
                 log.warning("Fold %d skipped (too few rows).", fold.fold)
                 continue
 
+            if len(np.unique(y_tr)) < 2:
+                log.warning("Fold %d skipped (single-class training target).", fold.fold)
+                continue
+
             log.debug(
                 "Fold %d: train [%d:%d] purge [%d:%d] test [%d:%d]",
                 fold.fold,
@@ -547,6 +556,9 @@ class StockRecommender:
             oof_y.append(y_te)
             oof_idx_list.append(np.arange(fold.test_start, fold.test_end))
 
+        if not oof_xgb or not oof_y:
+            raise ValueError("No valid walk-forward folds could be evaluated for this asset.")
+
         all_xgb = np.concatenate(oof_xgb)
         all_y   = np.concatenate(oof_y).astype(int)
         self.oof_indices       = np.concatenate(oof_idx_list) if oof_idx_list else np.array([], dtype=int)
@@ -563,19 +575,30 @@ class StockRecommender:
             all_lstm  = None
             oof_stack = all_xgb.reshape(-1, 1)   # XGBoost-only
 
-        self.calibrator = LogisticRegression(random_state=42, max_iter=500)
-        self.calibrator.fit(oof_stack, all_y)
-
-        ens_prob = self.calibrator.predict_proba(oof_stack)[:, 1]
-        self.oof_probabilities = ens_prob
-        ens_pred = (ens_prob >= 0.50).astype(int)
-
-
+        if len(np.unique(all_y)) < 2:
+            log.warning("OOF targets contain only 1 class; using XGBoost probabilities as ensemble.")
+            ens_prob = all_xgb
+            self.calibrator = None
+            self.oof_probabilities = ens_prob
+            ens_pred = (ens_prob >= 0.50).astype(int)
+            xgb_coef = 1.0
+            lstm_coef = None
+            stacking_intercept = 0.0
+        else:
+            self.calibrator = LogisticRegression(random_state=42, max_iter=500)
+            self.calibrator.fit(oof_stack, all_y)
+            ens_prob = self.calibrator.predict_proba(oof_stack)[:, 1]
+            self.oof_probabilities = ens_prob
+            ens_pred = (ens_prob >= 0.50).astype(int)
+            coef = self.calibrator.coef_[0]
+            xgb_coef  = round(float(coef[0]), 4)
+            lstm_coef = round(float(coef[1]), 4) if lstm_used_in_stacking else None
+            stacking_intercept = round(float(self.calibrator.intercept_[0]), 4)
 
         # Guard against all-same labels (prevents AUC error)
         try:
             roc_auc = float(roc_auc_score(all_y, ens_prob))
-        except ValueError:
+        except (ValueError, Exception):
             roc_auc = float("nan")
 
         brier = float(brier_score_loss(all_y, ens_prob))
@@ -586,11 +609,6 @@ class StockRecommender:
         cm    = confusion_matrix(all_y, ens_pred).tolist()
 
         n_pos = int(all_y.sum())
-
-        # Stacking coefficients — interpret carefully: logistic regression coefs.
-        coef = self.calibrator.coef_[0]
-        xgb_coef  = round(float(coef[0]), 4)
-        lstm_coef = round(float(coef[1]), 4) if lstm_used_in_stacking else None
 
         self.backtest_metrics = {
             # Classification performance
@@ -604,7 +622,7 @@ class StockRecommender:
             # Stacking coefficients (logistic regression, NOT percentage weights)
             "xgb_coefficient":       xgb_coef,
             "lstm_coefficient":      lstm_coef,    # None when LSTM unavailable
-            "stacking_intercept":    round(float(self.calibrator.intercept_[0]), 4),
+            "stacking_intercept":    stacking_intercept,
             # OOF metadata
             "oof_samples":           int(len(all_y)),
             "oof_positive_samples":  n_pos,
