@@ -64,6 +64,65 @@ def fetch_finnhub_peers(symbol: str, api_key: str) -> List[str]:
     return []
 
 
+def fetch_finnhub_recommendations(symbol: str, api_key: str) -> Optional[Dict[str, Any]]:
+    """Fetch analyst recommendation trends from Finnhub /stock/recommendation."""
+    if not api_key:
+        return None
+    try:
+        url = f"{FINNHUB_BASE_URL}/stock/recommendation"
+        resp = _SESSION.get(url, params={"symbol": symbol, "token": api_key}, timeout=3.5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+                r = data[0]
+                strong_buy = int(r.get("strongBuy", 0))
+                buy = int(r.get("buy", 0))
+                hold = int(r.get("hold", 0))
+                sell = int(r.get("sell", 0))
+                strong_sell = int(r.get("strongSell", 0))
+                total = strong_buy + buy + hold + sell + strong_sell
+                if total > 0:
+                    score = (strong_buy * 100 + buy * 75 + hold * 50 + sell * 25 + strong_sell * 0) / total
+                    if score >= 75:
+                        label = "STRONG BUY"
+                    elif score >= 60:
+                        label = "BUY"
+                    elif score >= 40:
+                        label = "HOLD"
+                    elif score >= 25:
+                        label = "UNDERPERFORM"
+                    else:
+                        label = "SELL"
+                    return {
+                        "analyst_rating": label,
+                        "analyst_score": round(score, 1),
+                        "analyst_count": total,
+                    }
+    except Exception as e:
+        log.debug("Finnhub recommendation fetch failed for %s: %s", symbol, e)
+    return None
+
+
+def fetch_finnhub_price_target(symbol: str, api_key: str) -> Optional[Dict[str, Any]]:
+    """Fetch analyst price targets from Finnhub /stock/price-target."""
+    if not api_key:
+        return None
+    try:
+        url = f"{FINNHUB_BASE_URL}/stock/price-target"
+        resp = _SESSION.get(url, params={"symbol": symbol, "token": api_key}, timeout=3.5)
+        if resp.status_code == 200:
+            d = resp.json()
+            if isinstance(d, dict) and d.get("targetMean"):
+                return {
+                    "target_price": float(d["targetMean"]),
+                    "target_high": float(d.get("targetHigh", 0)) or None,
+                    "target_low": float(d.get("targetLow", 0)) or None,
+                }
+    except Exception as e:
+        log.debug("Finnhub price target fetch failed for %s: %s", symbol, e)
+    return None
+
+
 def fetch_fmp_metrics(symbol: str, api_key: str) -> Dict[str, Any]:
     """Fetch key ratios and valuation metrics from Financial Modeling Prep (FMP)."""
     metrics: Dict[str, Any] = {}

@@ -218,6 +218,67 @@ _KNOWN_INDEX_MAPPINGS: dict[str, str] = {
     "^INDIAVIX": "^INDIAVIX",
 }
 
+# ---------------------------------------------------------------------------
+# Common company name and alias mappings for smooth search resolution
+# ---------------------------------------------------------------------------
+_KNOWN_COMPANY_ALIASES: dict[str, str] = {
+    "RELIANCE": "RELIANCE.NS",
+    "RELIANCE IND": "RELIANCE.NS",
+    "RELIANCE INDUSTRIE": "RELIANCE.NS",
+    "RELIANCE INDUSTRIES": "RELIANCE.NS",
+    "RELIANCE INDUSTRIES LTD": "RELIANCE.NS",
+    "RIL": "RELIANCE.NS",
+    "TCS": "TCS.NS",
+    "TATA CONSULTANCY": "TCS.NS",
+    "TATA CONSULTANCY SERVICES": "TCS.NS",
+    "INFOSYS": "INFY.NS",
+    "INFY": "INFY.NS",
+    "HDFC": "HDFCBANK.NS",
+    "HDFC BANK": "HDFCBANK.NS",
+    "ICICI": "ICICIBANK.NS",
+    "ICICI BANK": "ICICIBANK.NS",
+    "SBI": "SBIN.NS",
+    "SBIN": "SBIN.NS",
+    "STATE BANK OF INDIA": "SBIN.NS",
+    "TATA MOTORS": "TATAMOTORS.NS",
+    "TATA STEEL": "TATASTEEL.NS",
+    "BHARTI AIRTEL": "BHARTIARTL.NS",
+    "AIRTEL": "BHARTIARTL.NS",
+    "HINDUSTAN UNILEVER": "HINDUNILVR.NS",
+    "HUL": "HINDUNILVR.NS",
+    "L&T": "LT.NS",
+    "LARSEN & TOUBRO": "LT.NS",
+    "LARSEN AND TOUBRO": "LT.NS",
+    "MARUTI": "MARUTI.NS",
+    "MARUTI SUZUKI": "MARUTI.NS",
+    "BAJAJ FINANCE": "BAJFINANCE.NS",
+    "BAJAJ AUTO": "BAJAJ-AUTO.NS",
+    "KOTAK": "KOTAKBANK.NS",
+    "KOTAK BANK": "KOTAKBANK.NS",
+    "KOTAK MAHINDRA BANK": "KOTAKBANK.NS",
+    "WIPRO": "WIPRO.NS",
+    "HCL TECH": "HCLTECH.NS",
+    "HCL TECHNOLOGIES": "HCLTECH.NS",
+    "TECH MAHINDRA": "TECHM.NS",
+    "SUN PHARMA": "SUNPHARMA.NS",
+    "DR REDDY": "DRREDDY.NS",
+    "DR REDDYS": "DRREDDY.NS",
+    "CIPLA": "CIPLA.NS",
+    "TITAN": "TITAN.NS",
+    "ASIAN PAINTS": "ASIANPAINT.NS",
+    "NESTLE": "NESTLEIND.NS",
+    "NESTLE INDIA": "NESTLEIND.NS",
+    "ULTRATECH": "ULTRACEMCO.NS",
+    "ULTRATECH CEMENT": "ULTRACEMCO.NS",
+    "ADANI ENTERPRISES": "ADANIENT.NS",
+    "ADANI PORTS": "ADANIPORTS.NS",
+    "POWER GRID": "POWERGRID.NS",
+    "NTPC": "NTPC.NS",
+    "ONGC": "ONGC.NS",
+    "BPCL": "BPCL.NS",
+    "COAL INDIA": "COALINDIA.NS",
+}
+
 
 # ---------------------------------------------------------------------------
 # Ticker resolution
@@ -230,11 +291,12 @@ def resolve_ticker(user_input: str) -> str:
     ----------------
     1. If the input matches a known benchmark index (e.g. SENSEX → ^BSESN,
        NIFTY → ^NSEI), return the index symbol.
-    2. If the input already has a known suffix (.NS, .BO, .L, .AX, etc.),
+    2. If the input matches a known company name or alias, return mapped symbol.
+    3. If the input already has a known suffix (.NS, .BO, .L, .AX, etc.),
        use it directly — no modification.
-    3. If the bare symbol matches a known NSE name (case-insensitive),
+    4. If the bare symbol matches a known NSE name (case-insensitive),
        try <SYMBOL>.NS first.  Fall back to .BO if .NS returns no data.
-    4. Otherwise (likely a US ticker), use the bare symbol.
+    5. Otherwise (likely a US ticker), use the bare symbol.
 
     The function does NOT make any network requests; it applies heuristics
     only.  Actual data availability is verified by fetch_raw_data().
@@ -256,6 +318,11 @@ def resolve_ticker(user_input: str) -> str:
     if raw_upper in _KNOWN_INDEX_MAPPINGS:
         log.info("resolve_ticker: %s → %s (known index)", raw, _KNOWN_INDEX_MAPPINGS[raw_upper])
         return _KNOWN_INDEX_MAPPINGS[raw_upper]
+
+    # Check company name and alias mappings
+    if raw_upper in _KNOWN_COMPANY_ALIASES:
+        log.info("resolve_ticker: %s → %s (known company alias)", raw, _KNOWN_COMPANY_ALIASES[raw_upper])
+        return _KNOWN_COMPANY_ALIASES[raw_upper]
 
     # Normalise: uppercase the symbol, preserve suffix case (.NS not .ns)
     # Strategy: split on the last dot
