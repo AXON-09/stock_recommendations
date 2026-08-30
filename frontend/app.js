@@ -139,11 +139,22 @@ const _prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce
 /**
  * Animate numeric values smoothly from startVal to endVal using ease-out cubic.
  * Guaranteed to end strictly at endVal formatted by formatter.
+ * Handles both plain text and HTML formatted outputs safely.
  */
 function animateNumber(element, startVal, endVal, duration = 850, formatter = (v) => v.toFixed(2)) {
   if (!element || endVal === null || endVal === undefined || isNaN(endVal)) return;
+
+  function _apply(val) {
+    const res = formatter(val);
+    if (typeof res === 'string' && (res.includes('<') || res.includes('&'))) {
+      element.innerHTML = res;
+    } else {
+      element.textContent = res;
+    }
+  }
+
   if (_prefersReducedMotion || duration <= 0) {
-    element.textContent = formatter(endVal);
+    _apply(endVal);
     return;
   }
 
@@ -158,12 +169,12 @@ function animateNumber(element, startVal, endVal, duration = 850, formatter = (v
     const ease = 1 - Math.pow(1 - progress, 3);
     const current = sVal + diff * ease;
 
-    element.textContent = formatter(current);
+    _apply(current);
 
     if (progress < 1) {
       requestAnimationFrame(update);
     } else {
-      element.textContent = formatter(endVal);
+      _apply(endVal);
     }
   }
 
@@ -301,149 +312,275 @@ function renderInstitutionalIntelligence(data) {
   const currSym = data.market?.currency_symbol || (isIndia ? '₹' : '$');
   const currCode = isIndia ? 'INR' : 'USD';
 
-  // 1. Analyst Consensus
+  const isFundMode = Boolean(
+    inst.is_fund ||
+    (data.market && (data.market.is_etf || (data.market.company_name && data.market.company_name.includes('Index')))) ||
+    (inst.analyst_rating && inst.analyst_rating.toUpperCase().includes('INDEX')) ||
+    (data.ticker && data.ticker.startsWith('^'))
+  );
+
+  // Section Header & ETF Informational Banner
+  const secTitleEl = document.getElementById('inst-section-title');
+  const secSubtagEl = document.getElementById('inst-section-subtag');
+  const etfBannerEl = document.getElementById('inst-etf-banner');
+
+  if (isFundMode) {
+    if (secTitleEl) secTitleEl.innerHTML = 'ETF &amp; INDEX INTELLIGENCE <button class="info-btn" data-info="institutional_intelligence" aria-label="What is ETF Intelligence?">ⓘ</button>';
+    if (secSubtagEl) secSubtagEl.textContent = 'Fund Overview · Benchmark Tracking · Characteristics · Portfolio Valuation · Liquidity · Composition';
+    if (etfBannerEl) etfBannerEl.classList.remove('hidden');
+  } else {
+    if (secTitleEl) secTitleEl.innerHTML = 'INSTITUTIONAL &amp; FUNDAMENTAL INTELLIGENCE <button class="info-btn" data-info="institutional_intelligence" aria-label="What is Institutional Intelligence?">ⓘ</button>';
+    if (secSubtagEl) secSubtagEl.textContent = 'Analyst Consensus · Revenue Forecast · Valuation · Margins';
+    if (etfBannerEl) etfBannerEl.classList.add('hidden');
+  }
+
+  // Header and Sublabel elements for 6 cards
+  const c1Cat = document.getElementById('inst-card1-cat');
+  const c1Lbl = document.getElementById('inst-card1-lbl');
+  const c1Gauge = document.getElementById('inst-card1-gauge');
+  const c2Cat = document.getElementById('inst-card2-cat');
+  const c2Lbl = document.getElementById('inst-card2-lbl');
+  const c3Cat = document.getElementById('inst-card3-cat');
+  const c3Lbl = document.getElementById('inst-card3-lbl');
+  const c4Cat = document.getElementById('inst-card4-cat');
+  const c4Lbl = document.getElementById('inst-card4-lbl');
+  const c5Cat = document.getElementById('inst-card5-cat');
+  const c5Lbl = document.getElementById('inst-card5-lbl');
+  const c6Cat = document.getElementById('inst-card6-cat');
+  const c6Lbl = document.getElementById('inst-card6-lbl');
+
+  if (isFundMode) {
+    if (c1Cat) c1Cat.textContent = 'Overview';
+    if (c1Lbl) { c1Lbl.textContent = 'Fund Type'; c1Lbl.classList.remove('hidden'); }
+    if (c2Cat) c2Cat.textContent = 'Tracking';
+    if (c2Lbl) c2Lbl.textContent = 'Benchmark';
+    if (c3Cat) c3Cat.textContent = 'Structure';
+    if (c3Lbl) c3Lbl.textContent = 'Fund Characteristics';
+    if (c4Cat) c4Cat.textContent = 'Valuation';
+    if (c4Lbl) c4Lbl.textContent = 'Portfolio Valuation';
+    if (c5Cat) c5Cat.textContent = 'Trading';
+    if (c5Lbl) c5Lbl.textContent = 'Liquidity';
+    if (c6Cat) c6Cat.textContent = 'Composition';
+    if (c6Lbl) c6Lbl.textContent = 'Portfolio Composition';
+  } else {
+    if (c1Cat) c1Cat.textContent = 'Analyst';
+    if (c1Lbl) c1Lbl.classList.add('hidden');
+    if (c2Cat) c2Cat.textContent = 'Analyst';
+    if (c2Lbl) c2Lbl.textContent = 'Target Price';
+    if (c3Cat) c3Cat.textContent = 'Earnings';
+    if (c3Lbl) c3Lbl.textContent = 'Revenue Forecast';
+    if (c4Cat) c4Cat.textContent = 'Financials';
+    if (c4Lbl) c4Lbl.textContent = 'P/S Valuation';
+    if (c5Cat) c5Cat.textContent = 'Trading';
+    if (c5Lbl) c5Lbl.textContent = 'Trading Volume';
+    if (c6Cat) c6Cat.textContent = 'Profitability';
+    if (c6Lbl) c6Lbl.textContent = 'Gross Margin';
+  }
+
+  // 1. Card 1: Analyst Consensus (Company) / ETF Overview (Fund)
   const ratingEl = document.getElementById('inst-analyst-rating');
   const countEl = document.getElementById('inst-analyst-count');
   const needleEl = document.getElementById('inst-gauge-needle');
   const pathEl = document.getElementById('inst-gauge-path');
 
-  if (ratingEl) {
-    const rawRating = (inst.analyst_rating || 'Not Covered').toUpperCase();
-    ratingEl.textContent = rawRating;
-    if (rawRating.includes('BUY')) {
-      ratingEl.className = 'inst-val-highlight green';
-    } else if (rawRating.includes('SELL') || rawRating.includes('UNDERPERFORM')) {
-      ratingEl.className = 'inst-val-highlight red';
-    } else if (rawRating.includes('HOLD')) {
-      ratingEl.className = 'inst-val-highlight amber';
-    } else {
+  if (isFundMode) {
+    if (ratingEl) {
+      ratingEl.textContent = inst.fund_type || 'Index ETF';
       ratingEl.className = 'inst-val-highlight cyan';
     }
-  }
-  if (countEl) {
-    countEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts` : '0 analysts';
-  }
-
-  // Calculate needle angle (-70deg to +70deg from score 0-100)
-  if (needleEl) {
-    const score = (inst.analyst_score !== undefined && inst.analyst_score !== null) ? inst.analyst_score : 50;
-    const angle = ((score / 100) * 140) - 70;
-    const rad = (angle - 90) * (Math.PI / 180);
-    const x2 = (27 + 18 * Math.cos(rad)).toFixed(1);
-    const y2 = (25 + 18 * Math.sin(rad)).toFixed(1);
-    needleEl.setAttribute('x2', x2);
-    needleEl.setAttribute('y2', y2);
-    if (pathEl) {
-      const color = score >= 60 ? '#10b981' : (score <= 35 ? '#ef4444' : '#f59e0b');
-      pathEl.style.stroke = color;
-      const totalLen = 72.2;
-      const dash = Math.max(5, (score / 100) * totalLen);
-      pathEl.style.strokeDasharray = `${dash} ${totalLen - dash}`;
+    if (countEl) {
+      countEl.textContent = inst.holdings_count_str ? `${inst.holdings_count_str} · ${inst.diversification || 'High Diversification'}` : 'Broad Market Diversification';
+    }
+    if (c1Gauge) c1Gauge.style.display = 'none';
+  } else {
+    if (c1Gauge) c1Gauge.style.display = '';
+    if (ratingEl) {
+      const rawRating = (inst.analyst_rating || 'Not Covered').toUpperCase();
+      ratingEl.textContent = rawRating;
+      if (rawRating.includes('BUY')) {
+        ratingEl.className = 'inst-val-highlight green';
+      } else if (rawRating.includes('SELL') || rawRating.includes('UNDERPERFORM')) {
+        ratingEl.className = 'inst-val-highlight red';
+      } else if (rawRating.includes('HOLD')) {
+        ratingEl.className = 'inst-val-highlight amber';
+      } else {
+        ratingEl.className = 'inst-val-highlight cyan';
+      }
+    }
+    if (countEl) {
+      countEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts coverage` : '0 analysts coverage';
+    }
+    if (needleEl) {
+      const score = (inst.analyst_score !== undefined && inst.analyst_score !== null) ? inst.analyst_score : 50;
+      const angle = ((score / 100) * 140) - 70;
+      const rad = (angle - 90) * (Math.PI / 180);
+      const x2 = (27 + 18 * Math.cos(rad)).toFixed(1);
+      const y2 = (25 + 18 * Math.sin(rad)).toFixed(1);
+      needleEl.setAttribute('x2', x2);
+      needleEl.setAttribute('y2', y2);
+      if (pathEl) {
+        const color = score >= 60 ? '#10b981' : (score <= 35 ? '#ef4444' : '#f59e0b');
+        pathEl.style.stroke = color;
+        const totalLen = 72.2;
+        const dash = Math.max(5, (score / 100) * totalLen);
+        pathEl.style.strokeDasharray = `${dash} ${totalLen - dash}`;
+      }
     }
   }
 
-  // 2. Target Price
+  // 2. Card 2: Target Price (Company) / Benchmark Tracking (Fund)
   const targetPriceEl = document.getElementById('inst-target-price');
   const targetCountEl = document.getElementById('inst-target-analysts');
   if (targetPriceEl) {
-    if (inst.target_price !== null && inst.target_price !== undefined && inst.target_price > 0) {
-      animateNumber(targetPriceEl, 0, inst.target_price, 750, v =>
-        `${currSym}${v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="inst-curr">${currCode}</span>`
-      );
+    if (isFundMode) {
+      targetPriceEl.textContent = inst.benchmark_name || (data.market?.company_name || 'Broad Market Benchmark');
       if (targetCountEl) {
-        targetCountEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts coverage` : '12-Month Target Price';
+        targetCountEl.textContent = `${inst.replication_type || 'Full Replication'} · Tracking: ${inst.tracking_error || '< 0.05%'}`;
       }
     } else {
-      targetPriceEl.textContent = 'N/A';
-      if (targetCountEl) {
-        targetCountEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts` : 'Coverage unavailable';
+      if (inst.target_price !== null && inst.target_price !== undefined && inst.target_price > 0) {
+        animateNumber(targetPriceEl, 0, inst.target_price, 750, v =>
+          `${currSym}${v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="inst-curr">${currCode}</span>`
+        );
+        if (targetCountEl) {
+          targetCountEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts coverage` : '12-Month Target Price';
+        }
+      } else {
+        targetPriceEl.textContent = 'N/A';
+        if (targetCountEl) {
+          targetCountEl.textContent = inst.analyst_count > 0 ? `${inst.analyst_count} analysts` : 'Coverage unavailable';
+        }
       }
     }
   }
 
-  // 3. Earnings Revenue Forecast
+  // 3. Card 3: Revenue Forecast (Company) / Fund Characteristics (Fund)
   const revArrowEl = document.getElementById('inst-rev-arrow');
   const revLabelEl = document.getElementById('inst-rev-label');
   const revSubEl = document.getElementById('inst-rev-sub');
-  if (revLabelEl && revArrowEl) {
-    const fcast = (inst.revenue_forecast || 'N/A');
-    if (fcast.includes('Growing') || fcast.includes('Up')) {
-      revArrowEl.textContent = '↑';
-      revLabelEl.textContent = 'Growing';
-      revLabelEl.className = 'green';
-    } else if (fcast.includes('Declining') || fcast.includes('Down')) {
-      revArrowEl.textContent = '↓';
-      revLabelEl.textContent = 'Declining';
-      revLabelEl.className = 'red';
-    } else if (fcast.includes('Stable')) {
-      revArrowEl.textContent = '→';
-      revLabelEl.textContent = 'Stable';
-      revLabelEl.className = 'cyan';
-    } else {
-      revArrowEl.textContent = '●';
-      revLabelEl.textContent = 'N/A';
+
+  if (isFundMode) {
+    if (revArrowEl) revArrowEl.textContent = '●';
+    if (revLabelEl) {
+      revLabelEl.textContent = inst.fund_category || 'Index Fund';
       revLabelEl.className = 'cyan';
     }
-  }
-  if (revSubEl) {
-    if (inst.revenue_growth_pct !== null && inst.revenue_growth_pct !== undefined) {
-      revSubEl.textContent = `${inst.revenue_growth_pct > 0 ? '+' : ''}${inst.revenue_growth_pct}% (${inst.revenue_period || 'Next quarter'})`;
-    } else {
-      revSubEl.textContent = inst.revenue_period || 'Next quarter';
+    if (revSubEl) {
+      revSubEl.textContent = `Exp Ratio: ${inst.expense_ratio_str || 'Not Available'} · AUM: ${inst.aum_str || 'Not Available'}`;
+    }
+  } else {
+    if (revLabelEl && revArrowEl) {
+      const fcast = (inst.revenue_forecast || 'N/A');
+      if (fcast.includes('Growing') || fcast.includes('Up')) {
+        revArrowEl.textContent = '↑';
+        revLabelEl.textContent = 'Growing';
+        revLabelEl.className = 'green';
+      } else if (fcast.includes('Declining') || fcast.includes('Down')) {
+        revArrowEl.textContent = '↓';
+        revLabelEl.textContent = 'Declining';
+        revLabelEl.className = 'red';
+      } else if (fcast.includes('Stable')) {
+        revArrowEl.textContent = '→';
+        revLabelEl.textContent = 'Stable';
+        revLabelEl.className = 'cyan';
+      } else {
+        revArrowEl.textContent = '●';
+        revLabelEl.textContent = 'N/A';
+        revLabelEl.className = 'cyan';
+      }
+    }
+    if (revSubEl) {
+      if (inst.revenue_growth_pct !== null && inst.revenue_growth_pct !== undefined) {
+        revSubEl.textContent = `${inst.revenue_growth_pct > 0 ? '+' : ''}${inst.revenue_growth_pct}% (${inst.revenue_period || 'Next quarter'})`;
+      } else {
+        revSubEl.textContent = inst.revenue_period || 'Next quarter';
+      }
     }
   }
 
-  // 4. Financials P/S Valuation
+  // 4. Card 4: P/S Valuation (Company) / Portfolio Valuation (Fund)
   const psBadgeEl = document.getElementById('inst-ps-badge');
   const psValEl = document.getElementById('inst-ps-val');
-  if (psBadgeEl) {
-    if (inst.ps_ratio !== null && inst.ps_ratio !== undefined) {
-      const isLow = (inst.valuation_label || '').toLowerCase().includes('low');
-      const isHigh = (inst.valuation_label || '').toLowerCase().includes('high');
-      psBadgeEl.textContent = inst.valuation_label || 'Fair P/S';
-      psBadgeEl.className = 'inst-val-badge ' + (isLow ? 'green' : (isHigh ? 'red' : 'cyan'));
-    } else {
-      psBadgeEl.textContent = 'N/A';
+
+  if (isFundMode) {
+    if (psBadgeEl) {
+      psBadgeEl.textContent = inst.portfolio_style || 'Large Blend';
       psBadgeEl.className = 'inst-val-badge cyan';
     }
-  }
-  if (psValEl) {
-    if (inst.ps_ratio !== null && inst.ps_ratio !== undefined) {
-      animateNumber(psValEl, 0, inst.ps_ratio, 750, v => `${v.toFixed(2)} x`);
-    } else {
-      psValEl.textContent = 'N/A';
+    if (psValEl) {
+      psValEl.textContent = inst.weighted_pe_str || 'Not Available';
+    }
+  } else {
+    if (psBadgeEl) {
+      if (inst.ps_ratio !== null && inst.ps_ratio !== undefined) {
+        const isLow = (inst.valuation_label || '').toLowerCase().includes('low');
+        const isHigh = (inst.valuation_label || '').toLowerCase().includes('high');
+        psBadgeEl.textContent = inst.valuation_label || 'Fair P/S';
+        psBadgeEl.className = 'inst-val-badge ' + (isLow ? 'green' : (isHigh ? 'red' : 'cyan'));
+      } else {
+        psBadgeEl.textContent = 'N/A';
+        psBadgeEl.className = 'inst-val-badge cyan';
+      }
+    }
+    if (psValEl) {
+      if (inst.ps_ratio !== null && inst.ps_ratio !== undefined) {
+        animateNumber(psValEl, 0, inst.ps_ratio, 750, v => `${v.toFixed(2)} x`);
+      } else {
+        psValEl.textContent = 'N/A';
+      }
     }
   }
 
-  // 5. Trading Volume
+  // 5. Card 5: Trading Volume (Company) / Liquidity (Fund)
   const volValEl = document.getElementById('inst-vol-val');
   const volSubEl = document.getElementById('inst-vol-sub');
-  if (volValEl) {
-    volValEl.textContent = inst.trading_volume_str || (inst.trading_volume ? inst.trading_volume.toLocaleString('en-US') + ' shares' : 'N/A');
-  }
-  if (volSubEl) {
-    volSubEl.textContent = `Relative Volume: ${inst.volume_ratio}x (${inst.volume_status || 'Normal'})`;
-  }
 
-  // 6. Profitability Gross Margin
-  const profBadgeEl = document.getElementById('inst-prof-badge');
-  const profValEl = document.getElementById('inst-prof-val');
-  if (profBadgeEl) {
-    if (inst.gross_margin_pct !== null && inst.gross_margin_pct !== undefined) {
-      profBadgeEl.textContent = inst.profitability_label || 'Gross Margin';
-      profBadgeEl.className = 'inst-val-badge ' + (
-        (inst.profitability_label || '').toLowerCase().includes('high') ? 'green' : 'cyan'
-      );
-    } else {
-      profBadgeEl.textContent = 'N/A';
-      profBadgeEl.className = 'inst-val-badge cyan';
+  if (isFundMode) {
+    if (volValEl) {
+      volValEl.textContent = inst.trading_volume_str || 'Active Volume';
+    }
+    if (volSubEl) {
+      volSubEl.textContent = inst.liquidity_rating || `Relative Volume: ${inst.volume_ratio}x (${inst.volume_status || 'Normal'})`;
+    }
+  } else {
+    if (volValEl) {
+      volValEl.textContent = inst.trading_volume_str || (inst.trading_volume ? inst.trading_volume.toLocaleString('en-US') + ' shares' : 'N/A');
+    }
+    if (volSubEl) {
+      volSubEl.textContent = `Relative Volume: ${inst.volume_ratio}x (${inst.volume_status || 'Normal'})`;
     }
   }
-  if (profValEl) {
-    if (inst.gross_margin_pct !== null && inst.gross_margin_pct !== undefined) {
-      animateNumber(profValEl, 0, inst.gross_margin_pct, 750, v => `${v.toFixed(2)} %`);
-    } else {
-      profValEl.textContent = 'N/A';
+
+  // 6. Card 6: Gross Margin (Company) / Portfolio Composition (Fund)
+  const profBadgeEl = document.getElementById('inst-prof-badge');
+  const profValEl = document.getElementById('inst-prof-val');
+
+  if (isFundMode) {
+    if (profBadgeEl) {
+      profBadgeEl.textContent = inst.top_sector || 'Multi-Sector';
+      profBadgeEl.className = 'inst-val-badge green';
+    }
+    if (profValEl) {
+      profValEl.textContent = inst.top_holding || 'Constituent Basket';
+    }
+  } else {
+    if (profBadgeEl) {
+      if (inst.gross_margin_pct !== null && inst.gross_margin_pct !== undefined) {
+        profBadgeEl.textContent = inst.profitability_label || 'Gross Margin';
+        profBadgeEl.className = 'inst-val-badge ' + (
+          (inst.profitability_label || '').toLowerCase().includes('high') ? 'green' : 'cyan'
+        );
+      } else {
+        profBadgeEl.textContent = 'N/A';
+        profBadgeEl.className = 'inst-val-badge cyan';
+      }
+    }
+    if (profValEl) {
+      if (inst.gross_margin_pct !== null && inst.gross_margin_pct !== undefined) {
+        animateNumber(profValEl, 0, inst.gross_margin_pct, 750, v => `${v.toFixed(2)} %`);
+      } else {
+        profValEl.textContent = 'N/A';
+      }
     }
   }
 
@@ -919,6 +1056,7 @@ function renderModels(data) {
 
 function renderSignals(data) {
   const grid = document.getElementById('signals-grid');
+  if (!grid) return;
   grid.innerHTML = '';
 
   const LABELS = {
@@ -927,7 +1065,7 @@ function renderSignals(data) {
     macd:      'MACD',
     momentum:  'Momentum',
     volume:    'Volume',
-    valuation: 'Valuation ⚠ Rule-based',
+    valuation: 'Valuation',
   };
   // Maps signal-row key -> glossary key (data-info)
   const INFO_KEY = {
@@ -935,26 +1073,31 @@ function renderSignals(data) {
     momentum: 'momentum', volume: 'volume', valuation: 'valuation',
   };
 
-  const signals = data.signals;
+  const signals = data.signals || {};
   const isEtf = data.valuation?.is_etf || data.market?.is_etf;
 
-  Object.entries(LABELS).forEach(([key, label]) => {
+  Object.entries(LABELS).forEach(([key, label], idx) => {
     let val      = signals[key] || 'unavailable';
     let cssClass = SIG_CLASS[val] || 'sig-unavailable';
-    let dispVal  = val === 'not_applicable' ? 'Not Applicable (ETF)' : (val.charAt(0).toUpperCase() + val.slice(1).replace(/_/g, ' '));
+    let dispVal  = val === 'not_applicable' ? 'N/A (ETF)' : (val.charAt(0).toUpperCase() + val.slice(1).replace(/_/g, ' '));
     
     if (key === 'valuation' && isEtf) {
-      dispVal = 'Not Applicable (ETF)';
+      dispVal = 'N/A (ETF)';
       cssClass = 'sig-neutral';
     } else if (val === 'unavailable') {
       dispVal = 'Not Available';
     }
 
     const row = document.createElement('div');
-    row.className = 'signal-row';
+    row.className = 'signal-row qv-card-reveal';
+    row.style.animationDelay = `${idx * 35}ms`;
     row.innerHTML = `
-      <span class="signal-name">${label} <button class="info-btn" data-info="${INFO_KEY[key]}" aria-label="What is ${label}?">ⓘ</button></span>
-      <span class="signal-val ${cssClass}">${dispVal}</span>
+      <div class="signal-name-box">
+        <span class="signal-name">${label}</span>
+        ${key === 'valuation' ? '<span class="signal-rule-pill">Rule-based</span>' : ''}
+        <button class="info-btn" data-info="${INFO_KEY[key]}" aria-label="What is ${label}?">ⓘ</button>
+      </div>
+      <span class="signal-val-badge ${cssClass}">${dispVal}</span>
     `;
     grid.appendChild(row);
   });
@@ -1161,17 +1304,20 @@ function renderExplanation(data) {
       const infoKey = FEAT_INFO_MAP[item.feature] || item.feature;
       const row = document.createElement('div');
       row.className = 'shap-item qv-card-reveal';
-      row.style.animationDelay = `${Math.min(idx * 60, 350)}ms`;
+      row.style.animationDelay = `${Math.min(idx * 45, 300)}ms`;
       row.innerHTML = `
         <div class="shap-item-top">
-          <span class="shap-feat-name">${item.display_name} <button class="info-btn" data-info="${infoKey}" aria-label="What is ${item.display_name}?">ⓘ</button></span>
-          <span class="shap-feat-val">Val: ${num(item.value, 2)}</span>
+          <div class="shap-feat-name-wrap">
+            <span class="shap-feat-name">${item.display_name}</span>
+            <button class="info-btn" data-info="${infoKey}" aria-label="What is ${item.display_name}?">ⓘ</button>
+          </div>
+          <span class="shap-impact ${isPos ? 'shap-impact-pos' : 'shap-impact-neg'}">${sign}${(item.shap_value * 100).toFixed(1)}%</span>
         </div>
         <div class="shap-bar-wrap">
+          <span class="shap-feat-val">Val: ${num(item.value, 2)}</span>
           <div class="shap-bar-bg">
             <div class="shap-bar ${isPos ? 'shap-bar-pos' : 'shap-bar-neg'}" style="width: ${barPct}%;"></div>
           </div>
-          <span class="shap-impact ${isPos ? 'shap-impact-pos' : 'shap-impact-neg'}">${sign}${(item.shap_value * 100).toFixed(1)}%</span>
         </div>
       `;
       targetEl.appendChild(row);

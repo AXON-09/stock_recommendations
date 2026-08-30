@@ -360,8 +360,9 @@ def get_market_info(ticker: str, yf_info: dict) -> MarketInfo:
     """
     ticker_upper = ticker.upper()
     quote_type   = str(yf_info.get("quoteType", "")).upper()
-    is_etf       = quote_type in {"ETF", "MUTUALFUND"}
-    etf_category = _derive_etf_category(yf_info) if is_etf else None
+    is_index     = ticker_upper.startswith("^") or quote_type == "INDEX"
+    is_etf       = quote_type in {"ETF", "MUTUALFUND"} or is_index
+    etf_category = _derive_etf_category(yf_info) if (is_etf and not is_index) else ("Market Benchmark Index" if is_index else None)
 
     # ── Indian markets ────────────────────────────────────────────────────
     if ticker_upper.endswith(".NS") or ticker_upper in {"^NSEI", "^NSEBANK", "^CNXIT", "^INDIAVIX"}:

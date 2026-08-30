@@ -635,7 +635,7 @@
               <div class="stat-row"><span class="stat-lbl">ATR (Daily Range) <button class="info-btn" data-info="atr" aria-label="What is ATR?">ⓘ</button></span>              <span id="stat-atr"     class="stat-val">—</span></div>
               <div class="stat-row"><span class="stat-lbl">ATR % of Price <button class="info-btn" data-info="atr_pct" aria-label="What is ATR %?">ⓘ</button></span>            <span id="stat-atr-pct" class="stat-val">—</span></div>
               <div class="stat-row"><span class="stat-lbl">14-Day RSI <button class="info-btn" data-info="rsi" aria-label="What is RSI?">ⓘ</button></span>              <span id="stat-rsi"     class="stat-val">—</span></div>
-              <div class="stat-row stat-divider"><span class="stat-lbl">Adaptive Buy Level <button class="info-btn" data-info="adaptive_buy" aria-label="What is the Adaptive Buy threshold?">ⓘ</button></span>     <span id="stat-rsi-buy"  class="stat-val green">—</span></div>
+              <div class="stat-row"><span class="stat-lbl">Adaptive Buy Level <button class="info-btn" data-info="adaptive_buy" aria-label="What is the Adaptive Buy threshold?">ⓘ</button></span>     <span id="stat-rsi-buy"  class="stat-val green">—</span></div>
               <div class="stat-row"><span class="stat-lbl">Adaptive Sell Level <button class="info-btn" data-info="adaptive_sell" aria-label="What is the Adaptive Sell threshold?">ⓘ</button></span>    <span id="stat-rsi-sell" class="stat-val red">—</span></div>
             </div>
           </div>
@@ -660,20 +660,22 @@
         <div class="card glass institutional-card" id="institutional-section">
           <div class="card-header-flex">
             <div>
-              <h2 class="card-title">INSTITUTIONAL &amp; FUNDAMENTAL INTELLIGENCE <button class="info-btn" data-info="institutional_intelligence" aria-label="What is Institutional Intelligence?">ⓘ</button></h2>
-              <span class="card-subtag">Analyst Consensus · Revenue Forecast · Valuation · Margins</span>
+              <h2 class="card-title" id="inst-section-title">INSTITUTIONAL &amp; FUNDAMENTAL INTELLIGENCE <button class="info-btn" data-info="institutional_intelligence" aria-label="What is Institutional Intelligence?">ⓘ</button></h2>
+              <span class="card-subtag" id="inst-section-subtag">Analyst Consensus · Revenue Forecast · Valuation · Margins</span>
             </div>
           </div>
+          <div id="inst-etf-banner" class="hidden" style="margin-top: 0.75rem; margin-bottom: 0.75rem; padding: 0.6rem 0.85rem; background: rgba(56, 189, 248, 0.08); border-left: 3px solid #38bdf8; border-radius: 4px; font-size: 0.76rem; color: var(--text-2); line-height: 1.4;">ETF and index funds represent diversified portfolios rather than individual companies. Therefore, this section displays fund-level intelligence instead of company fundamentals.</div>
           <div class="inst-cards-grid">
-            <!-- Card 1: Analyst Consensus -->
+            <!-- Card 1: Analyst Consensus / ETF Overview -->
             <div class="inst-mini-card">
               <div class="inst-card-header">
-                <span class="inst-title">Analyst</span>
+                <span class="inst-title" id="inst-card1-cat">Analyst</span>
                 <span class="inst-arrow">›</span>
               </div>
+              <div class="inst-sub-label hidden" id="inst-card1-lbl">Overview</div>
               <div class="inst-main-row">
                 <span class="inst-val-highlight green" id="inst-analyst-rating">BUY</span>
-                <div class="inst-gauge-wrap">
+                <div class="inst-gauge-wrap" id="inst-card1-gauge">
                   <svg viewBox="0 0 54 28" class="inst-gauge-svg">
                     <path d="M 4 25 A 23 23 0 0 1 50 25" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="4" stroke-linecap="round"/>
                     <path id="inst-gauge-path" d="M 4 25 A 23 23 0 0 1 50 25" fill="none" stroke="#10b981" stroke-width="4" stroke-linecap="round" stroke-dasharray="72.2" stroke-dashoffset="18"/>
@@ -685,26 +687,26 @@
               <div class="inst-sub-text" id="inst-analyst-count">—</div>
             </div>
 
-            <!-- Card 2: Analyst Target Price -->
+            <!-- Card 2: Analyst Target Price / Benchmark Tracking -->
             <div class="inst-mini-card">
               <div class="inst-card-header">
-                <span class="inst-title">Analyst</span>
+                <span class="inst-title" id="inst-card2-cat">Analyst</span>
                 <span class="inst-arrow">›</span>
               </div>
-              <div class="inst-sub-label">Target Price</div>
+              <div class="inst-sub-label" id="inst-card2-lbl">Target Price</div>
               <div class="inst-main-row">
                 <span class="inst-val-bold" id="inst-target-price">—</span>
               </div>
               <div class="inst-sub-text" id="inst-target-analysts">—</div>
             </div>
 
-            <!-- Card 3: Earnings Revenue Forecast -->
+            <!-- Card 3: Earnings Revenue Forecast / Fund Characteristics -->
             <div class="inst-mini-card">
               <div class="inst-card-header">
-                <span class="inst-title">Earnings</span>
+                <span class="inst-title" id="inst-card3-cat">Earnings</span>
                 <span class="inst-arrow">›</span>
               </div>
-              <div class="inst-sub-label">Revenue Forecast</div>
+              <div class="inst-sub-label" id="inst-card3-lbl">Revenue Forecast</div>
               <div class="inst-main-row">
                 <span class="inst-val-direction" id="inst-rev-forecast">
                   <span class="inst-arrow-icon" id="inst-rev-arrow">→</span>
@@ -714,39 +716,39 @@
               <div class="inst-sub-text" id="inst-rev-sub">Next quarter</div>
             </div>
 
-            <!-- Card 4: Financials & P/S Valuation -->
+            <!-- Card 4: Financials & P/S Valuation / Portfolio Valuation -->
             <div class="inst-mini-card">
               <div class="inst-card-header">
-                <span class="inst-title">Financials</span>
+                <span class="inst-title" id="inst-card4-cat">Financials</span>
                 <span class="inst-arrow">›</span>
               </div>
-              <div class="inst-sub-label">P/S Valuation</div>
+              <div class="inst-sub-label" id="inst-card4-lbl">P/S Valuation</div>
               <div class="inst-main-row">
                 <span class="inst-val-badge green" id="inst-ps-badge">Fair P/S</span>
               </div>
               <div class="inst-sub-bold" id="inst-ps-val">—</div>
             </div>
 
-            <!-- Card 5: Trading Volume -->
+            <!-- Card 5: Trading Volume / Liquidity -->
             <div class="inst-mini-card">
               <div class="inst-card-header">
-                <span class="inst-title">Trading</span>
+                <span class="inst-title" id="inst-card5-cat">Trading</span>
                 <span class="inst-arrow">›</span>
               </div>
-              <div class="inst-sub-label">Trading Volume</div>
+              <div class="inst-sub-label" id="inst-card5-lbl">Trading Volume</div>
               <div class="inst-main-row">
                 <span class="inst-val-bold" id="inst-vol-val">—</span>
               </div>
               <div class="inst-sub-text" id="inst-vol-sub">Relative Volume: 1.0x</div>
             </div>
 
-            <!-- Card 6: Profitability & Gross Margin -->
+            <!-- Card 6: Profitability & Gross Margin / Portfolio Composition -->
             <div class="inst-mini-card">
               <div class="inst-card-header">
-                <span class="inst-title">Profitability</span>
+                <span class="inst-title" id="inst-card6-cat">Profitability</span>
                 <span class="inst-arrow">›</span>
               </div>
-              <div class="inst-sub-label">Gross Margin</div>
+              <div class="inst-sub-label" id="inst-card6-lbl">Gross Margin</div>
               <div class="inst-main-row">
                 <span class="inst-val-badge green" id="inst-prof-badge">Gross Margin</span>
               </div>

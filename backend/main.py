@@ -306,6 +306,23 @@ class InstitutionalIntelligenceModel(BaseModel):
     gross_margin_pct: Optional[float] = Field(None, description="Gross Margin %")
     operating_margin_pct: Optional[float] = Field(None, description="Operating Margin %")
     provider: str = Field("Twelve Data", description="Data provider")
+    # Context-aware ETF / Index intelligence fields:
+    is_fund: bool = Field(False, description="True if instrument is an ETF / Index / Index Fund")
+    fund_type: Optional[str] = Field(None, description="ETF/Index classification")
+    benchmark_name: Optional[str] = Field(None, description="Benchmark index name")
+    holdings_count_str: Optional[str] = Field(None, description="Number of holdings / constituents")
+    diversification: Optional[str] = Field(None, description="Diversification rating e.g. High")
+    replication_type: Optional[str] = Field(None, description="Replication type e.g. Full Replication")
+    tracking_error: Optional[str] = Field(None, description="Tracking error e.g. < 0.05%")
+    aum_str: Optional[str] = Field(None, description="AUM string")
+    expense_ratio_str: Optional[str] = Field(None, description="Expense ratio string")
+    fund_category: Optional[str] = Field(None, description="Fund category")
+    weighted_pe_str: Optional[str] = Field(None, description="Weighted average P/E")
+    weighted_pb_str: Optional[str] = Field(None, description="Weighted average P/B")
+    portfolio_style: Optional[str] = Field(None, description="Portfolio style e.g. Large Blend")
+    liquidity_rating: Optional[str] = Field(None, description="Liquidity rating")
+    top_sector: Optional[str] = Field(None, description="Top sector")
+    top_holding: Optional[str] = Field(None, description="Top holding")
 
 
 class TickerNewsStoryModel(BaseModel):
@@ -367,9 +384,11 @@ _VALUATION_NOTE_LIVE = (
 )
 
 _VALUATION_NOTE_ETF = (
-    "Not applicable for ETFs. This is an ETF or index fund — P/E, peer P/E, "
-    "and relative P/E describe a single company's earnings multiple, which "
-    "doesn't have a meaningful equivalent for a basket of holdings."
+    "Valuation metrics are unavailable for ETFs and index funds. "
+    "These metrics (P/E Ratio, Peer Median P/E, and Relative P/E Premium/Discount) "
+    "measure the valuation of a single operating company. Since ETFs and index funds "
+    "represent a diversified basket of holdings rather than one company, these metrics "
+    "are not meaningful and are therefore not displayed."
 )
 
 
@@ -576,14 +595,39 @@ def get_recommendation(
             gross_margin_pct=inst_intel.gross_margin_pct,
             operating_margin_pct=inst_intel.operating_margin_pct,
             provider=inst_intel.provider,
+            is_fund=inst_intel.is_fund,
+            fund_type=inst_intel.fund_type,
+            benchmark_name=inst_intel.benchmark_name,
+            holdings_count_str=inst_intel.holdings_count_str,
+            diversification=inst_intel.diversification,
+            replication_type=inst_intel.replication_type,
+            tracking_error=inst_intel.tracking_error,
+            aum_str=inst_intel.aum_str,
+            expense_ratio_str=inst_intel.expense_ratio_str,
+            fund_category=inst_intel.fund_category,
+            weighted_pe_str=inst_intel.weighted_pe_str,
+            weighted_pb_str=inst_intel.weighted_pb_str,
+            portfolio_style=inst_intel.portfolio_style,
+            liquidity_rating=inst_intel.liquidity_rating,
+            top_sector=inst_intel.top_sector,
+            top_holding=inst_intel.top_holding,
         )
     except Exception as exc:
         log.warning("[%s] Failed to build institutional intelligence: %s", resolved, exc)
         inst_model = None
 
-    # ── Live Press Releases & Corporate Disclosures ───────────────────────
+    # ── Live Press Releases & Corporate News (Concurrent Fetch) ───────────
+    press_releases_list: List[TickerNewsStoryModel] = []
+    ticker_news_list: List[TickerNewsStoryModel] = []
     try:
-        raw_pr = fetch_press_releases(resolved, limit=25)
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            fut_pr = executor.submit(fetch_press_releases, resolved, 25)
+            fut_news = executor.submit(fetch_ticker_news, resolved, 30)
+            raw_pr = fut_pr.result()
+            raw_t_news = fut_news.result()
+
         press_releases_list = [
             TickerNewsStoryModel(
                 title=n["title"],
@@ -592,15 +636,8 @@ def get_recommendation(
                 link=n["link"],
                 uuid=n["uuid"],
             )
-            for n in raw_pr
+            for n in (raw_pr or [])
         ]
-    except Exception as exc:
-        log.warning("[%s] Failed to fetch press releases: %s", resolved, exc)
-        press_releases_list = []
-
-    # ── Live Ticker News Stories ───────────────────────────────────────────
-    try:
-        raw_t_news = fetch_ticker_news(resolved, limit=30)
         ticker_news_list = [
             TickerNewsStoryModel(
                 title=n["title"],
@@ -609,11 +646,10 @@ def get_recommendation(
                 link=n["link"],
                 uuid=n["uuid"],
             )
-            for n in raw_t_news
+            for n in (raw_t_news or [])
         ]
     except Exception as exc:
-        log.warning("[%s] Failed to fetch ticker news: %s", resolved, exc)
-        ticker_news_list = []
+        log.warning("[%s] Failed to fetch concurrent news/releases: %s", resolved, exc)
 
     return RecommendationResponse(
         ticker=resolved,

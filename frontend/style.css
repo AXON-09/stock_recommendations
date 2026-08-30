@@ -1671,48 +1671,92 @@ body {
 
 .shap-item {
   display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.55rem 0.75rem;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+}
+
+.shap-item:hover {
+  background: rgba(15, 23, 42, 0.7);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.shap-item-top {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
-  font-size: 0.78rem;
+  width: 100%;
+}
+
+.shap-feat-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .shap-feat-name {
-  width: 130px;
-  color: var(--text-2);
+  color: var(--text-1, #f8fafc);
+  font-weight: 600;
+  font-size: 0.84rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
 }
 
-.shap-bar-track {
+.shap-impact {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.shap-impact-pos {
+  color: #10b981;
+}
+
+.shap-impact-neg {
+  color: #ef4444;
+}
+
+.shap-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.shap-feat-val {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.74rem;
+  color: var(--text-3, #94a3b8);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.shap-bar-bg {
   flex: 1;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: var(--radius-full);
+  height: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
   overflow: hidden;
 }
 
-.shap-bar-fill {
+.shap-bar {
   height: 100%;
-  border-radius: var(--radius-full);
+  border-radius: 999px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.shap-bar-pos { background: var(--success); }
-.shap-bar-neg { background: var(--danger); }
-
-.shap-val {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 600;
-  min-width: 45px;
-  text-align: right;
-}
-
-.shap-val.pos { color: var(--success); }
-.shap-val.neg { color: var(--danger); }
+.shap-bar-pos { background: #10b981; }
+.shap-bar-neg { background: #ef4444; }
 
 .shap-summary-note {
   font-size: 0.78rem;
@@ -4135,56 +4179,106 @@ body {
 .signals-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 0.85rem;
+  gap: 0.75rem;
   width: 100%;
-  margin-top: 0.25rem;
+  margin-top: 0.5rem;
 }
 
-.sig-card {
-  background: rgba(15, 23, 42, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
-  padding: 0.85rem 1rem;
+@media (max-width: 768px) {
+  .signals-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.signal-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
   transition: all 0.2s ease;
+  min-height: 46px;
+  gap: 0.5rem;
 }
 
-.sig-card:hover {
-  border-color: rgba(255, 255, 255, 0.12);
+.signal-row:hover {
   background: rgba(15, 23, 42, 0.75);
+  border-color: rgba(56, 189, 248, 0.25);
+  transform: translateY(-1px);
 }
 
-.sig-label {
-  font-size: 0.84rem;
-  color: var(--text-2, #94a3b8);
-  font-weight: 500;
+.signal-name-box {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
 }
 
-.sig-val {
-  font-size: 0.85rem;
+.signal-name {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-1, #f8fafc);
+  white-space: nowrap;
+}
+
+.signal-rule-pill {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.signal-val-badge {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.76rem;
   font-weight: 700;
-  padding: 0.2rem 0.55rem;
+  padding: 0.22rem 0.6rem;
   border-radius: 6px;
+  text-align: center;
+  white-space: nowrap;
 }
 
-.sig-val.buy, .sig-val.bullish, .sig-val.undervalued {
+.signal-val-badge.sig-bullish,
+.signal-val-badge.sig-undervalued,
+.signal-val-badge.sig-low {
   background: rgba(16, 185, 129, 0.15);
   color: #10b981;
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
-.sig-val.sell, .sig-val.bearish, .sig-val.overvalued {
+.signal-val-badge.sig-bearish,
+.signal-val-badge.sig-overvalued {
   background: rgba(239, 68, 68, 0.15);
   color: #ef4444;
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
-.sig-val.neutral, .sig-val.hold, .sig-val.fair {
+.signal-val-badge.sig-neutral,
+.signal-val-badge.sig-normal,
+.signal-val-badge.sig-fair {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.signal-val-badge.sig-elevated {
   background: rgba(245, 158, 11, 0.15);
   color: #f59e0b;
   border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.signal-val-badge.sig-unavailable,
+.signal-val-badge.sig-not-applicable {
+  background: rgba(100, 116, 139, 0.15);
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.25);
 }
 
 /* ── Market Regime Card ────────────────────────────────────────────────────── */
@@ -4289,9 +4383,9 @@ body {
 }
 
 .stat-divider {
-  margin-top: 0.35rem;
-  padding-top: 0.55rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: none !important;
+  margin-top: 0 !important;
+  padding-top: 0.45rem !important;
 }
 
 /* ── Confidence Score & Model Architecture ─────────────────────────────────── */
