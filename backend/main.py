@@ -49,6 +49,13 @@ from engine import (
     build_feature_matrix,
     extract_features,
 )
+from runtime import (
+    TTLLRUCache,
+    TRAIN_SEMAPHORE,
+    RateLimitMiddleware,
+    allowed_origins,
+    training_lock,
+)
 from market import resolve_ticker_with_fallback, get_market_info, MarketInfo
 from models import StockRecommender
 from backtest import run_benchmark_comparison, BenchmarkComparisonResult
@@ -77,9 +84,11 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+app.add_middleware(RateLimitMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -112,7 +121,11 @@ class CacheEntry:
         }
 
 
-_cache: Dict[str, CacheEntry] = {}
+class _CacheWarmed(Exception):
+    """Signals another thread trained this ticker while we held the lock."""
+
+
+_cache: TTLLRUCache = TTLLRUCache()
 
 
 # ---------------------------------------------------------------------------
@@ -436,6 +449,41 @@ def _build_lstm_sequence(
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
+def _train_and_cache(resolved: str, refresh: bool, t0: float) -> None:
+    """Fit models for ``resolved`` and store them in the bounded cache.
+
+    Wrapped in a global semaphore so a burst of distinct tickers cannot
+    saturate every CPU core at once on a small Render/EC2 instance.
+    """
+    log.info("[%s] Training models (refresh=%s)…", resolved, refresh)
+    try:
+        with TRAIN_SEMAPHORE:
+            X, y, df = build_feature_matrix(resolved)
+            rec = StockRecommender()
+            rec.fit(X, y)
+
+        # Forward return stats for the training set
+        if "fwd_return" in df.columns:
+            fwd = df["fwd_return"].dropna()
+            rec.backtest_metrics["avg_fwd_return_pct"] = round(float(fwd.mean() * 100), 3)
+            rec.backtest_metrics["med_fwd_return_pct"] = round(float(fwd.median() * 100), 3)
+
+        rec.data_through = (
+            df.index[-1].strftime("%Y-%m-%d")
+            if hasattr(df.index[-1], "strftime")
+            else str(df.index[-1])
+        )
+        _cache[resolved] = CacheEntry(rec, X, df, info=fetch_info(resolved))
+        log.info("[%s] Training complete in %.1fs", resolved, time.perf_counter() - t0)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("[%s] Model training failed", resolved)
+        raise HTTPException(status_code=500, detail=f"Model training error: {exc}")
+
+
 @app.get(
     "/api/recommend",
     response_model=RecommendationResponse,
@@ -500,30 +548,15 @@ def get_recommendation(
     cache_hit = resolved in _cache and not _cache[resolved].is_stale and not refresh
 
     if not cache_hit:
-        log.info("[%s] Training models (refresh=%s)…", resolved, refresh)
-        try:
-            X, y, df = build_feature_matrix(resolved)
-            rec = StockRecommender()
-            rec.fit(X, y)
+        # Serialise training per ticker: concurrent requests for the same
+        # symbol wait here instead of each spawning their own XGBoost + LSTM fit.
+        with training_lock(resolved):
+            _existing = _cache.get(resolved)
+            if _existing is not None and not _existing.is_stale and not refresh:
+                cache_hit = True  # another request trained it while we waited
 
-            # Forward return stats for the training set
-            if "fwd_return" in df.columns:
-                fwd = df["fwd_return"].dropna()
-                rec.backtest_metrics["avg_fwd_return_pct"] = round(float(fwd.mean() * 100), 3)
-                rec.backtest_metrics["med_fwd_return_pct"] = round(float(fwd.median() * 100), 3)
-
-            rec.data_through = (
-                df.index[-1].strftime("%Y-%m-%d")
-                if hasattr(df.index[-1], "strftime")
-                else str(df.index[-1])
-            )
-            _cache[resolved] = CacheEntry(rec, X, df, info=fetch_info(resolved))
-            log.info("[%s] Training complete in %.1fs", resolved, time.perf_counter() - t0)
-        except (ValueError, RuntimeError) as exc:
-            raise HTTPException(status_code=404, detail=str(exc))
-        except Exception as exc:
-            log.exception("[%s] Model training failed", resolved)
-            raise HTTPException(status_code=500, detail=f"Model training error: {exc}")
+        if not cache_hit:
+            _train_and_cache(resolved, refresh, t0)
 
     entry = _cache[resolved]
     rec   = entry.model
@@ -805,10 +838,17 @@ def compare_strategies(
     if not cache_hit:
         log.info("[%s] Building feature matrix for benchmark...", resolved)
         try:
-            X, y, df = build_feature_matrix(resolved)
-            rec = StockRecommender()
-            rec.fit(X, y)
-            _cache[resolved] = CacheEntry(model=rec, X=X, df=df)
+            with training_lock(resolved):
+                _existing = _cache.get(resolved)
+                if _existing is not None and not _existing.is_stale and not refresh:
+                    raise _CacheWarmed
+                with TRAIN_SEMAPHORE:
+                    X, y, df = build_feature_matrix(resolved)
+                    rec = StockRecommender()
+                    rec.fit(X, y)
+                _cache[resolved] = CacheEntry(model=rec, X=X, df=df)
+        except _CacheWarmed:
+            pass  # another request finished training this ticker while we waited
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(status_code=404, detail=str(exc))
         except Exception as exc:
@@ -926,6 +966,7 @@ def health():
         "status":          "ok",
         "version":         "3.0.0",
         "cached_tickers":  list(_cache.keys()),
+        "cached_count":    len(_cache),
         "cache_ttl_hours": cfg.CACHE_TTL_HOURS,
         "markets":         ["India (NSE/BSE)", "US (NASDAQ/NYSE)"],
     }
