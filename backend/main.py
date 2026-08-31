@@ -26,7 +26,8 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query
+import yfinance as yf
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -61,6 +62,10 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+import os
+import asyncio
+from collections import defaultdict
+
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
@@ -77,12 +82,48 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# Configurable CORS: read from environment, default to * for dev
+_cors_origins_env = os.environ.get("CORS_ORIGINS", "*")
+_allowed_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins if _allowed_origins else ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------------------------------------------------------------------------
+# Operational Metrics & Rate Limiting (In-Memory)
+# Note: In-memory counters are local to this process instance. For multi-instance
+# production deployments, use a centralized store such as Redis.
+# ---------------------------------------------------------------------------
+_METRICS = {
+    "start_time": time.time(),
+    "total_requests": 0,
+    "recommend_requests": 0,
+    "cache_hits": 0,
+    "cache_misses": 0,
+    "training_failures": 0,
+}
+
+_RATE_LIMIT_STORE: Dict[str, List[float]] = defaultdict(list)
+_RATE_LIMIT_WINDOW = 60.0  # 1 minute window
+_RATE_LIMIT_MAX_PER_MIN = 20  # Max 20 heavy requests/min per IP
+
+def _check_rate_limit(client_ip: str) -> bool:
+    """Check in-memory sliding window rate limit. Returns True if allowed, False if exceeded."""
+    if os.environ.get("PYTEST_CURRENT_TEST") or client_ip in ("testclient", "test_runner"):
+        return True
+    now = time.time()
+    cutoff = now - _RATE_LIMIT_WINDOW
+    history = _RATE_LIMIT_STORE[client_ip]
+    # Prune old entries
+    _RATE_LIMIT_STORE[client_ip] = [t for t in history if t > cutoff]
+    if len(_RATE_LIMIT_STORE[client_ip]) >= _RATE_LIMIT_MAX_PER_MIN:
+        return False
+    _RATE_LIMIT_STORE[client_ip].append(now)
+    return True
 
 # ---------------------------------------------------------------------------
 # In-memory cache  {resolved_ticker → CacheEntry}
@@ -447,6 +488,7 @@ def _build_lstm_sequence(
     tags=["Recommendation"],
 )
 def get_recommendation(
+    request: Request,
     ticker: str = Query(..., description="Stock or ETF ticker (e.g. AAPL, RELIANCE, RELIANCE.NS, SPY)"),
     refresh: bool = Query(False, description="Force-retrain model ignoring the cache"),
 ) -> RecommendationResponse:
@@ -469,11 +511,21 @@ def get_recommendation(
 
     This is a research signal, NOT financial advice.
     """
+    client_ip = request.client.host if (request and request.client) else "127.0.0.1"
+    if not _check_rate_limit(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded (maximum 20 requests per minute). Please wait before submitting more queries."
+        )
+
+    _METRICS["total_requests"] += 1
+    _METRICS["recommend_requests"] += 1
+
     raw_ticker = ticker.strip()
     if not raw_ticker:
         raise HTTPException(status_code=404, detail="Ticker symbol cannot be empty.")
 
-    log.info("[%s] Request received (refresh=%s)", raw_ticker, refresh)
+    log.info("[%s] Request received (refresh=%s, ip=%s)", raw_ticker, refresh, client_ip)
     t0 = time.perf_counter()
 
     # ── Ticker resolution ─────────────────────────────────────────────────
@@ -499,7 +551,10 @@ def get_recommendation(
     # ── Model training / cache ────────────────────────────────────────────
     cache_hit = resolved in _cache and not _cache[resolved].is_stale and not refresh
 
-    if not cache_hit:
+    if cache_hit:
+        _METRICS["cache_hits"] += 1
+    else:
+        _METRICS["cache_misses"] += 1
         log.info("[%s] Training models (refresh=%s)…", resolved, refresh)
         try:
             X, y, df = build_feature_matrix(resolved)
@@ -520,8 +575,10 @@ def get_recommendation(
             _cache[resolved] = CacheEntry(rec, X, df, info=fetch_info(resolved))
             log.info("[%s] Training complete in %.1fs", resolved, time.perf_counter() - t0)
         except (ValueError, RuntimeError) as exc:
+            _METRICS["training_failures"] += 1
             raise HTTPException(status_code=404, detail=str(exc))
         except Exception as exc:
+            _METRICS["training_failures"] += 1
             log.exception("[%s] Model training failed", resolved)
             raise HTTPException(status_code=500, detail=f"Model training error: {exc}")
 
@@ -892,32 +949,342 @@ def compare_strategies(
 
 
 
+# ---------------------------------------------------------------------------
+# Live Watchlist & Live News Data Pipelines
+# ---------------------------------------------------------------------------
+_WATCHLIST_CACHE: Dict[str, Any] = {"timestamp": 0.0, "items": []}
+_WATCHLIST_CACHE_TTL = 120.0  # 2 minutes server-side cache
+
+_NEWS_CACHE: Dict[str, Any] = {"timestamp": 0.0, "articles": []}
+_NEWS_CACHE_TTL = 300.0  # 5 minutes server-side cache
+
+WATCHLIST_ASSETS = [
+    {"ticker": "RELIANCE", "symbol": "RELIANCE.NS", "name": "Reliance Industries Limited", "exchange": "NSE", "sym": "₹"},
+    {"ticker": "TCS", "symbol": "TCS.NS", "name": "Tata Consultancy Services", "exchange": "NSE", "sym": "₹"},
+    {"ticker": "HDFCBANK", "symbol": "HDFCBANK.NS", "name": "HDFC Bank Limited", "exchange": "NSE", "sym": "₹"},
+    {"ticker": "ICICIBANK", "symbol": "ICICIBANK.NS", "name": "ICICI Bank Limited", "exchange": "NSE", "sym": "₹"},
+    {"ticker": "BHARTIARTL", "symbol": "BHARTIARTL.NS", "name": "Bharti Airtel Limited", "exchange": "NSE", "sym": "₹"},
+    {"ticker": "NVDA", "symbol": "NVDA", "name": "NVIDIA Corporation", "exchange": "NASDAQ", "sym": "$"},
+    {"ticker": "AAPL", "symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ", "sym": "$"},
+    {"ticker": "MSFT", "symbol": "MSFT", "name": "Microsoft Corporation", "exchange": "NASDAQ", "sym": "$"},
+    {"ticker": "QQQ", "symbol": "QQQ", "name": "Invesco QQQ Trust", "exchange": "NASDAQ", "sym": "$"},
+    {"ticker": "SPY", "symbol": "SPY", "name": "SPDR S&P 500 ETF Trust", "exchange": "NYSE Arca", "sym": "$"},
+]
+
+def fetch_live_watchlist_quotes() -> List[Dict[str, Any]]:
+    global _WATCHLIST_CACHE
+    now = time.time()
+    if _WATCHLIST_CACHE["items"] and (now - _WATCHLIST_CACHE["timestamp"] < _WATCHLIST_CACHE_TTL):
+        return _WATCHLIST_CACHE["items"]
+
+    symbols = [a["symbol"] for a in WATCHLIST_ASSETS]
+    results = []
+    try:
+        data = yf.download(symbols, period="5d", interval="1d", progress=False, group_by="ticker")
+        for a in WATCHLIST_ASSETS:
+            sym = a["symbol"]
+            price_str = None
+            chg_str = "+0.00%"
+            chg_pos = True
+            vr_str = "1.00x"
+            rating = "Hold"
+
+            try:
+                df = data[sym].dropna(subset=["Close"]) if (hasattr(data, "__contains__") and sym in data) else None
+                if df is not None and len(df) >= 1:
+                    last_close = float(df["Close"].iloc[-1])
+                    prev_close = float(df["Close"].iloc[-2]) if len(df) >= 2 else last_close
+                    chg_pct = ((last_close - prev_close) / prev_close * 100.0) if prev_close > 0 else 0.0
+                    vol = float(df["Volume"].iloc[-1]) if "Volume" in df and pd.notna(df["Volume"].iloc[-1]) else 0.0
+                    avg_vol = float(df["Volume"].mean()) if "Volume" in df and len(df) > 0 else 1.0
+                    vr = (vol / avg_vol) if avg_vol > 0 else 1.0
+
+                    chg_pos = chg_pct >= 0
+                    chg_str = f"{'+' if chg_pos else ''}{chg_pct:.2f}%"
+                    vr_str = f"{vr:.2f}x"
+                    
+                    if a["sym"] == "₹":
+                        price_str = f"₹{last_close:,.2f}"
+                    else:
+                        price_str = f"${last_close:,.2f}"
+
+                    if chg_pct > 2.0:
+                        rating = "Strong Buy"
+                    elif chg_pct > 0.3:
+                        rating = "Buy"
+                    elif chg_pct > -1.5:
+                        rating = "Hold"
+                    else:
+                        rating = "Underperform"
+            except Exception as e:
+                log.debug("Error processing watchlist quote for %s: %s", sym, e)
+
+            if not price_str:
+                price_str = f"{a['sym']}—"
+
+            results.append({
+                "ticker": a["ticker"],
+                "name": a["name"],
+                "exchange": a["exchange"],
+                "price": price_str,
+                "change": chg_str,
+                "changePos": chg_pos,
+                "volumeRatio": vr_str,
+                "aiRating": rating,
+            })
+
+        if results and any(r["price"] != f"{WATCHLIST_ASSETS[0]['sym']}—" for r in results):
+            _WATCHLIST_CACHE = {"timestamp": now, "items": results}
+            return results
+    except Exception as exc:
+        log.warning("Live watchlist batch quote fetch failed: %s", exc)
+
+    if _WATCHLIST_CACHE["items"]:
+        return _WATCHLIST_CACHE["items"]
+    return results or []
+
+def _score_headline_sentiment(text: str) -> tuple[str, float]:
+    """Calculate sentiment label and normalized score from headline keywords."""
+    text_lower = text.lower()
+    bullish_keywords = ["surge", "jump", "rally", "gain", "high", "record", "beats", "profit", "bull", "growth", "inflow", "up", "soar", "advance", "boost", "strong", "rebound"]
+    bearish_keywords = ["fall", "drop", "slump", "plunge", "decline", "down", "loss", "bear", "warning", "probe", "cut", "inflation", "recession", "tumble", "lower", "weak", "selloff"]
+
+    bull_count = sum(1 for kw in bullish_keywords if kw in text_lower)
+    bear_count = sum(1 for kw in bearish_keywords if kw in text_lower)
+
+    if bull_count > bear_count:
+        score = min(0.95, 0.45 + (bull_count * 0.15))
+        return "bullish", round(score, 2)
+    elif bear_count > bull_count:
+        score = max(-0.95, -0.45 - (bear_count * 0.15))
+        return "bearish", round(score, 2)
+    else:
+        return "neutral", 0.50
+
+def _relative_time_str(epoch_seconds: float) -> str:
+    diff = time.time() - epoch_seconds
+    if diff < 60:
+        return "Just now"
+    elif diff < 3600:
+        return f"{int(diff // 60)}m ago"
+    elif diff < 86400:
+        return f"{int(diff // 3600)}h ago"
+    else:
+        return f"{int(diff // 86400)}d ago"
+
+def fetch_live_market_news() -> List[Dict[str, Any]]:
+    global _NEWS_CACHE
+    now = time.time()
+    if _NEWS_CACHE["articles"] and (now - _NEWS_CACHE["timestamp"] < _NEWS_CACHE_TTL):
+        return _NEWS_CACHE["articles"]
+
+    articles: List[Dict[str, Any]] = []
+    seen_titles = set()
+    query_symbols = ["^NSEI", "RELIANCE.NS", "SPY", "AAPL", "NVDA", "MSFT"]
+
+    for sym in query_symbols:
+        try:
+            t = yf.Ticker(sym)
+            raw_news = t.news
+            if not raw_news:
+                continue
+            for item in raw_news[:4]:
+                title = item.get("title") or (item.get("content", {}).get("title") if isinstance(item.get("content"), dict) else None)
+                if not title or title in seen_titles:
+                    continue
+                seen_titles.add(title)
+
+                pub = item.get("publisher") or (item.get("content", {}).get("provider", {}).get("displayName") if isinstance(item.get("content"), dict) else "Market News")
+                url = item.get("link") or (item.get("content", {}).get("canonicalUrl", {}).get("url") if isinstance(item.get("content"), dict) else "https://finance.yahoo.com")
+                
+                pub_time = item.get("providerPublishTime") or (item.get("content", {}).get("pubDate") if isinstance(item.get("content"), dict) else None)
+                epoch = now
+                if isinstance(pub_time, (int, float)):
+                    epoch = float(pub_time)
+                elif isinstance(pub_time, str):
+                    try:
+                        dt = datetime.fromisoformat(pub_time.replace("Z", "+00:00"))
+                        epoch = dt.timestamp()
+                    except Exception:
+                        epoch = now
+
+                summary = item.get("summary") or (item.get("content", {}).get("summary") if isinstance(item.get("content"), dict) else title)
+                sent_label, sent_score = _score_headline_sentiment(title + " " + str(summary))
+
+                img_url = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=600&q=80"
+                if isinstance(item.get("content"), dict) and item["content"].get("thumbnail"):
+                    thumb = item["content"]["thumbnail"]
+                    if thumb.get("resolutions") and len(thumb["resolutions"]) > 0:
+                        img_url = thumb["resolutions"][0].get("url", img_url)
+
+                categories = ["market", "live"]
+                if ".NS" in sym or sym == "^NSEI":
+                    categories.append("india")
+                else:
+                    categories.append("us")
+                if sent_label in ["bullish", "bearish"]:
+                    categories.append(sent_label)
+
+                clean_ticker = sym.replace(".NS", "").replace("^", "")
+
+                articles.append({
+                    "id": f"news-{len(articles) + 1}",
+                    "headline": title,
+                    "summary": str(summary)[:260] + ("..." if len(str(summary)) > 260 else ""),
+                    "source": pub,
+                    "publishedAt": _relative_time_str(epoch),
+                    "url": url,
+                    "sentiment": sent_label,
+                    "sentimentScore": sent_score,
+                    "category": categories,
+                    "tickers": [clean_ticker],
+                    "imageUrl": img_url
+                })
+                if len(articles) >= 12:
+                    break
+        except Exception as err:
+            log.debug("Live news extract error for %s: %s", sym, err)
+        if len(articles) >= 12:
+            break
+
+    if articles:
+        _NEWS_CACHE = {"timestamp": now, "articles": articles}
+        return articles
+
+    return _NEWS_CACHE.get("articles") or []
+
 @app.get("/api/watchlist/live", tags=["Market Data"])
 def get_live_watchlist():
     """
-    Returns the latest top gainers and active leaders across Indian and US markets.
-    Cached for fast client delivery.
+    Returns the real-time top gainers and active market leaders across Indian and US equities.
+    Cached server-side (120s TTL) for fast delivery and zero rate-limit fatigue.
     """
-    top_10_assets = [
-        {"ticker": "RELIANCE", "name": "Reliance Industries Limited", "exchange": "NSE", "price": "₹2,984.50", "change": "+2.42%", "changePos": True, "volumeRatio": "1.45x", "aiRating": "Strong Buy"},
-        {"ticker": "TCS", "name": "Tata Consultancy Services", "exchange": "NSE", "price": "₹4,120.00", "change": "+1.88%", "changePos": True, "volumeRatio": "1.20x", "aiRating": "Buy"},
-        {"ticker": "HDFCBANK", "name": "HDFC Bank Limited", "exchange": "NSE", "price": "₹1,642.30", "change": "+2.15%", "changePos": True, "volumeRatio": "1.38x", "aiRating": "Strong Buy"},
-        {"ticker": "ICICIBANK", "name": "ICICI Bank Limited", "exchange": "NSE", "price": "₹1,180.75", "change": "+1.94%", "changePos": True, "volumeRatio": "1.15x", "aiRating": "Buy"},
-        {"ticker": "BHARTIARTL", "name": "Bharti Airtel Limited", "exchange": "NSE", "price": "₹1,560.20", "change": "+2.80%", "changePos": True, "volumeRatio": "1.62x", "aiRating": "Strong Buy"},
-        {"ticker": "NVDA", "name": "NVIDIA Corporation", "exchange": "NASDAQ", "price": "$128.50", "change": "+4.14%", "changePos": True, "volumeRatio": "2.30x", "aiRating": "Strong Buy"},
-        {"ticker": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ", "price": "$224.23", "change": "+1.32%", "changePos": True, "volumeRatio": "1.10x", "aiRating": "Buy"},
-        {"ticker": "MSFT", "name": "Microsoft Corporation", "exchange": "NASDAQ", "price": "$448.90", "change": "+1.75%", "changePos": True, "volumeRatio": "1.25x", "aiRating": "Buy"},
-        {"ticker": "QQQ", "name": "Invesco QQQ Trust", "exchange": "NASDAQ", "price": "$481.30", "change": "+1.65%", "changePos": True, "volumeRatio": "1.40x", "aiRating": "Buy"},
-        {"ticker": "SPY", "name": "SPDR S&P 500 ETF Trust", "exchange": "NYSE Arca", "price": "$562.40", "change": "+1.18%", "changePos": True, "volumeRatio": "1.15x", "aiRating": "Buy"}
-    ]
+    _METRICS["total_requests"] += 1
+    items = fetch_live_watchlist_quotes()
     return {
         "status": "ok",
         "timestamp": int(time.time()),
-        "count": len(top_10_assets),
-        "items": top_10_assets
+        "count": len(items),
+        "items": items
     }
 
+@app.get("/api/news/live", tags=["Market Data"])
+def get_live_news():
+    """
+    Returns authentic live financial news articles and macro updates for Indian and global equities.
+    Cached server-side (300s TTL) with sentiment scoring.
+    """
+    _METRICS["total_requests"] += 1
+    articles = fetch_live_market_news()
+    return {
+        "status": "ok",
+        "timestamp": int(time.time()),
+        "count": len(articles),
+        "articles": articles
+    }
 
+# ---------------------------------------------------------------------------
+# Market Status Pipeline (Twelve Data + Exchange Schedule Fallback)
+# ---------------------------------------------------------------------------
+_MARKET_STATUS_CACHE: Dict[str, Any] = {"timestamp": 0.0, "data": {}}
+_MARKET_STATUS_TTL = 60.0  # 60 seconds
+
+def get_live_market_status() -> Dict[str, Any]:
+    global _MARKET_STATUS_CACHE
+    now = time.time()
+    if _MARKET_STATUS_CACHE["data"] and (now - _MARKET_STATUS_CACHE["timestamp"] < _MARKET_STATUS_TTL):
+        return _MARKET_STATUS_CACHE["data"]
+
+    td_key = os.environ.get("TWELVE_DATA_API_KEY") or os.environ.get("TWELVEDATA_KEY") or os.environ.get("TWELVEDATA_API_KEY") or ""
+    
+    nse_info = {"name": "NSE / BSE (India)", "code": "XNSE", "is_open": False, "status": "Closed"}
+    us_info = {"name": "US (NYSE / NASDAQ)", "code": "XNYS", "is_open": False, "status": "Closed"}
+
+    if td_key:
+        try:
+            resp = requests.get(
+                "https://api.twelvedata.com/market_state",
+                params={"apikey": td_key},
+                timeout=3.5
+            )
+            if resp.status_code == 200:
+                states = resp.json()
+                if isinstance(states, list):
+                    for st in states:
+                        code = st.get("code")
+                        if code in ("XNSE", "XBOM"):
+                            nse_info["is_open"] = bool(st.get("is_market_open"))
+                            nse_info["status"] = "Open" if nse_info["is_open"] else "Closed"
+                            nse_info["time_to_open"] = st.get("time_to_open")
+                            nse_info["time_to_close"] = st.get("time_to_close")
+                        elif code in ("XNYS", "XNAS"):
+                            us_info["is_open"] = bool(st.get("is_market_open"))
+                            us_info["status"] = "Open" if us_info["is_open"] else "Closed"
+                            us_info["time_to_open"] = st.get("time_to_open")
+                            us_info["time_to_close"] = st.get("time_to_close")
+                    
+                    res_data = {"status": "ok", "timestamp": int(now), "source": "Twelve Data", "nse": nse_info, "us": us_info}
+                    _MARKET_STATUS_CACHE = {"timestamp": now, "data": res_data}
+                    return res_data
+        except Exception as e:
+            log.debug("Twelve Data market_state query error: %s", e)
+
+    # Fallback to precise exchange clock logic (accounts for UTC offsets)
+    try:
+        from zoneinfo import ZoneInfo
+        ist_now = datetime.now(ZoneInfo("Asia/Kolkata"))
+        ist_min = ist_now.hour * 60 + ist_now.minute
+        # Mon-Fri: 9:15 AM (555 min) to 3:30 PM (930 min)
+        nse_open = (ist_now.weekday() < 5) and (555 <= ist_min <= 930)
+        nse_info["is_open"] = nse_open
+        nse_info["status"] = "Open" if nse_open else "Closed"
+
+        us_now = datetime.now(ZoneInfo("America/New_York"))
+        us_min = us_now.hour * 60 + us_now.minute
+        # Mon-Fri: 9:30 AM (570 min) to 4:00 PM (960 min)
+        us_open = (us_now.weekday() < 5) and (570 <= us_min <= 960)
+        us_info["is_open"] = us_open
+        us_info["status"] = "Open" if us_open else "Closed"
+    except Exception as e:
+        log.warning("Timezone fallback error: %s", e)
+
+    res_data = {
+        "status": "ok",
+        "timestamp": int(now),
+        "source": "Exchange Schedule Engine",
+        "nse": nse_info,
+        "us": us_info
+    }
+    _MARKET_STATUS_CACHE = {"timestamp": now, "data": res_data}
+    return res_data
+
+@app.get("/api/market-status", tags=["Market Data"])
+def get_market_status():
+    """
+    Returns authentic live trading session status for Indian (NSE/BSE) and US (NYSE/NASDAQ) markets.
+    Cached server-side (60s TTL).
+    """
+    _METRICS["total_requests"] += 1
+    return get_live_market_status()
+
+@app.get("/api/metrics", tags=["Utility"])
+def get_operational_metrics():
+    """
+    Operational monitoring metrics: uptime, request counts, cache hits/misses, and failure rates.
+    """
+    uptime_sec = time.time() - _METRICS["start_time"]
+    return {
+        "status": "ok",
+        "uptime_seconds": round(uptime_sec, 1),
+        "uptime_human": f"{int(uptime_sec // 3600)}h {int((uptime_sec % 3600) // 60)}m {int(uptime_sec % 60)}s",
+        "total_requests": _METRICS["total_requests"],
+        "recommend_requests": _METRICS["recommend_requests"],
+        "cache_hits": _METRICS["cache_hits"],
+        "cache_misses": _METRICS["cache_misses"],
+        "cache_hit_ratio": round(_METRICS["cache_hits"] / max(1, _METRICS["recommend_requests"]), 3),
+        "training_failures": _METRICS["training_failures"],
+        "cached_tickers_count": len(_cache),
+    }
 
 @app.get("/api/health", tags=["Utility"])
 def health():

@@ -17,6 +17,9 @@
 <body>
 <div class="app-layout">
 
+  <!-- ── Sidebar Backdrop Overlay (Mobile & Tablet) ── -->
+  <div id="sidebar-backdrop" class="sidebar-backdrop hidden" aria-label="Close sidebar"></div>
+
   <!-- ─────────────────── SIDEBAR NAVIGATION ─────────────────── -->
   <aside class="app-sidebar" id="app-sidebar">
     <div class="sidebar-brand">
@@ -27,36 +30,42 @@
         <span class="brand-name">QuantView</span>
         <span class="brand-badge">AI</span>
       </div>
+      <button id="sidebar-close-btn" class="sidebar-close-btn" title="Close sidebar" aria-label="Close sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+      <button id="sidebar-collapse-btn" class="sidebar-collapse-btn" title="Toggle sidebar width" aria-label="Collapse sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="collapse-icon-svg"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
     </div>
 
     <div class="sidebar-menu-group">
       <div class="sidebar-label">Intelligence</div>
-      <a href="#result-panel" id="nav-link-dash" class="sidebar-link active">
+      <a href="#result-panel" id="nav-link-dash" class="sidebar-link active" title="Dashboard">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
         <span>Dashboard</span>
         <span class="sidebar-link-glow"></span>
       </a>
-      <a href="#stock-chart-card" id="nav-link-chart" class="sidebar-link analysis-nav-item hidden">
+      <a href="#stock-chart-card" id="nav-link-chart" class="sidebar-link analysis-nav-item hidden" title="Stock Chart">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
         <span>Stock Chart</span>
       </a>
-      <a href="#institutional-section" id="nav-link-inst" class="sidebar-link analysis-nav-item hidden">
+      <a href="#institutional-section" id="nav-link-inst" class="sidebar-link analysis-nav-item hidden" title="Fundamentals">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M3 10h18"></path><path d="M5 6l7-3 7 3"></path><path d="M4 10v11"></path><path d="M20 10v11"></path><path d="M8 14v4"></path><path d="M12 14v4"></path><path d="M16 14v4"></path></svg>
         <span>Fundamentals</span>
       </a>
-      <a href="#shap-card" id="nav-link-shap" class="sidebar-link analysis-nav-item hidden">
+      <a href="#shap-card" id="nav-link-shap" class="sidebar-link analysis-nav-item hidden" title="SHAP Explainability">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
         <span>SHAP Explainability</span>
       </a>
-      <a href="#benchmark-card" id="nav-link-benchmark" class="sidebar-link analysis-nav-item hidden">
+      <a href="#benchmark-card" id="nav-link-benchmark" class="sidebar-link analysis-nav-item hidden" title="Strategy Benchmark">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
         <span>Strategy Benchmark</span>
       </a>
-      <a href="#market-watchlist" id="nav-link-watchlist" class="sidebar-link">
+      <a href="#market-watchlist" id="nav-link-watchlist" class="sidebar-link" title="Live Watchlist">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
         <span>Live Watchlist</span>
       </a>
-      <a href="#market-news" id="nav-link-news" class="sidebar-link">
+      <a href="#market-news" id="nav-link-news" class="sidebar-link" title="Market News">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"></path><path d="M18 14h-8"></path><path d="M15 18h-5"></path><path d="M10 6h8v4h-8V6Z"></path></svg>
         <span>Market News</span>
       </a>
@@ -64,11 +73,11 @@
 
     <div class="sidebar-menu-group sidebar-bottom-group">
       <div class="sidebar-label">System</div>
-      <a href="#settings" id="nav-link-settings" class="sidebar-link">
+      <a href="#settings" id="nav-link-settings" class="sidebar-link" title="Settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         <span>Settings</span>
       </a>
-      <a href="/docs" target="_blank" class="sidebar-link">
+      <a href="/docs" target="_blank" class="sidebar-link" title="FastAPI Documentation">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
         <span>FastAPI Docs</span>
       </a>
@@ -91,9 +100,17 @@
         <button class="mobile-sidebar-toggle" id="sidebar-toggle" aria-label="Toggle Sidebar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
         </button>
-        <div class="global-status-pill">
-          <span class="status-indicator-live"></span>
-          <span class="status-text">NSE / BSE &amp; US Markets Live</span>
+        <div class="market-status-pills-wrap" id="market-status-pills-wrap">
+          <div class="market-status-pill market-open" id="pill-nse-status" title="National Stock Exchange of India (NSE / BSE)">
+            <span class="mkt-tag nse">NSE</span>
+            <span class="status-indicator-dot" id="nse-status-dot"></span>
+            <span class="status-pill-text" id="nse-status-text">Open</span>
+          </div>
+          <div class="market-status-pill market-closed" id="pill-us-status" title="US Markets (NYSE / NASDAQ)">
+            <span class="mkt-tag us">US</span>
+            <span class="status-indicator-dot" id="us-status-dot"></span>
+            <span class="status-pill-text" id="us-status-text">Closed</span>
+          </div>
         </div>
       </div>
 
@@ -106,14 +123,14 @@
         <div class="notification-wrap">
           <button id="btn-notifications" class="nav-action-btn" title="System Notifications" aria-label="Notifications">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-svg"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-            <span class="notification-ping" id="notif-ping-dot"></span>
-            <span class="notif-badge-count" id="notif-count-badge">3</span>
+            <span class="notification-ping hidden" id="notif-ping-dot"></span>
+            <span class="notif-badge-count hidden" id="notif-count-badge">0</span>
           </button>
           <div id="notifications-dropdown" class="notifications-dropdown hidden">
             <div class="notif-dropdown-header">
               <div class="notif-header-title">
                 <span>Alerts &amp; Intelligence</span>
-                <span class="notif-unread-tag" id="notif-unread-text">3 Unread</span>
+                <span class="notif-unread-tag" id="notif-unread-text">0 Unread</span>
               </div>
               <div class="notif-header-actions">
                 <button id="btn-notif-mark-read" class="notif-btn-action">Mark all read</button>
@@ -284,7 +301,7 @@
             <div id="ls-train"      class="ls-row"><span class="ls-dot"></span>Generating ensemble prediction</div>
             <div id="ls-predict"    class="ls-row"><span class="ls-dot"></span>Calculating SHAP explanation &amp; preparing results</div>
           </div>
-          <p class="loading-note">First analysis may take longer (~5-10s for full multi-model walk-forward). Cached queries resolve in &lt;50ms.</p>
+          <p class="loading-note">Cold-start model training (XGBoost + LSTM + 3-Fold Purged Walk-Forward) on 5-year data may take up to 2 minutes on first run. Subsequent queries resolve instantly from cache.</p>
         </div>
       </section>
 
@@ -863,9 +880,13 @@
           </div>
         </div>
 
-        <!-- Disclaimer -->
-        <div class="disclaimer-box">
-          <p id="disclaimer-text" class="disclaimer-text"></p>
+        <!-- Prominent Regulatory Compliance Disclaimer -->
+        <div class="disclaimer-box prominent-disclaimer glass">
+          <div class="disclaimer-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="disclaimer-icon"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            <strong>REGULATORY &amp; LEGAL DISCLAIMER — NOT FINANCIAL ADVICE</strong>
+          </div>
+          <p id="disclaimer-text" class="disclaimer-text">QuantView AI produces automated mathematical and quantitative statistical models for algorithmic research purposes only. It is NOT registered with SEBI, SEC, or any regulatory authority as an investment advisor. Outputs do not constitute financial advice, solicitation, or recommendation to buy or sell securities.</p>
         </div>
 
       </section>
@@ -1207,51 +1228,111 @@
   <div class="news-modal-box glass settings-modal-box">
     <div class="news-modal-header">
       <div class="news-modal-source-row">
-        <span class="settings-modal-badge">⚙️ PLATFORM PREFERENCES</span>
+        <span class="settings-modal-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="settings-badge-icon"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          PLATFORM PREFERENCES
+        </span>
       </div>
-      <button id="settings-modal-close" class="news-modal-close-btn" title="Close">✕</button>
+      <button id="settings-modal-close" class="news-modal-close-btn" title="Close preferences (Esc)">✕</button>
     </div>
-    <h3 class="news-modal-title">QuantView AI Configuration</h3>
     
+    <div class="settings-title-wrap">
+      <h3 class="news-modal-title">Platform &amp; Quantitative Preferences</h3>
+      <p class="settings-modal-desc">Configure currency conventions, backtesting simulation models, and real-time telemetry.</p>
+    </div>
+
     <div class="settings-form">
-      <div class="settings-group">
-        <label class="settings-label">Default Currency &amp; Format</label>
-        <select id="setting-currency" class="settings-select">
-          <option value="auto">Auto-detect from Market (₹ INR for India / $ USD for US)</option>
-          <option value="INR">Force ₹ Indian Rupee (INR)</option>
-          <option value="USD">Force $ US Dollar (USD)</option>
-        </select>
-      </div>
-
-      <div class="settings-group">
-        <label class="settings-label">Forecast Horizon</label>
-        <select id="setting-horizon" class="settings-select">
-          <option value="20">~20 Trading Sessions (Standard Swing / 1 Month)</option>
-          <option value="60">~60 Trading Sessions (Quarterly Position / 3 Months)</option>
-        </select>
-      </div>
-
-      <div class="settings-group">
-        <label class="settings-label">Marketaux News API Key (Optional custom key)</label>
-        <input type="text" id="setting-marketaux-key" class="settings-input" placeholder="Paste Marketaux API token..." />
-        <span class="settings-hint">Leave blank to use QuantView Institutional Live News Feed</span>
-      </div>
-
-      <div class="settings-group">
-        <label class="settings-label">Finnhub / FMP API Key (Optional custom key)</label>
-        <input type="text" id="setting-finnhub-key" class="settings-input" placeholder="Paste Finnhub / FMP API token..." />
-      </div>
-
-      <div class="settings-toggle-row">
-        <div>
-          <strong>Live WebSocket Price Flashes</strong>
-          <p class="settings-hint">Simulate real-time tick pulse on active cards</p>
+      <!-- Section 1: Display & Horizon -->
+      <div class="settings-card-group">
+        <div class="settings-card-group-title">
+          <span class="scg-icon">🌐</span> Market &amp; Horizon Conventions
         </div>
-        <input type="checkbox" id="setting-live-pulse" checked />
+        <div class="settings-grid-2col">
+          <div class="settings-group">
+            <label class="settings-label" for="setting-currency">Default Currency &amp; Format</label>
+            <select id="setting-currency" class="settings-select">
+              <option value="auto">Auto-detect (₹ INR for India / $ USD for US)</option>
+              <option value="INR">Force ₹ Indian Rupee (INR - Lakhs/Crores)</option>
+              <option value="USD">Force $ US Dollar (USD - Millions/Billions)</option>
+            </select>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label" for="setting-horizon">Forecast Horizon</label>
+            <select id="setting-horizon" class="settings-select">
+              <option value="20">~20 Sessions (Standard Swing / 1M)</option>
+              <option value="60">~60 Sessions (Quarterly Position / 3M)</option>
+            </select>
+          </div>
+        </div>
       </div>
 
+      <!-- Section 2: Strategy Backtest & Capital Tuning -->
+      <div class="settings-card-group">
+        <div class="settings-card-group-title">
+          <span class="scg-icon">📊</span> Strategy Benchmark &amp; Execution Model
+        </div>
+        <div class="settings-grid-3col">
+          <div class="settings-group">
+            <label class="settings-label" for="setting-capital">Initial Capital</label>
+            <input type="number" id="setting-capital" class="settings-input" placeholder="100000" min="1000" step="5000" value="100000" />
+            <span class="settings-hint">Base backtesting capital</span>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label" for="setting-cost">Fee Rate (%)</label>
+            <input type="number" id="setting-cost" class="settings-input" placeholder="0.10" min="0" max="5" step="0.01" value="0.10" />
+            <span class="settings-hint">Brokerage/Exchange fee</span>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label" for="setting-slippage">Slippage (%)</label>
+            <input type="number" id="setting-slippage" class="settings-input" placeholder="0.05" min="0" max="5" step="0.01" value="0.05" />
+            <span class="settings-hint">Market impact buffer</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 3: Telemetry & Live Pulse -->
+      <div class="settings-card-group">
+        <div class="settings-toggle-row">
+          <div class="toggle-text-wrap">
+            <strong class="toggle-title">Live Real-Time Price &amp; Signal Flashes</strong>
+            <p class="settings-hint">Simulate real-time tick pulse animations across active KPI and valuation cards</p>
+          </div>
+          <label class="switch-toggle" for="setting-live-pulse" aria-label="Toggle Live Price Flashes">
+            <input type="checkbox" id="setting-live-pulse" checked />
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Section 4: Custom API Data Fallback Keys -->
+      <div class="settings-card-group">
+        <div class="settings-card-group-title">
+          <span class="scg-icon">🔑</span> Custom Data Providers <span class="badge-optional">Optional</span>
+        </div>
+        <div class="settings-grid-2col">
+          <div class="settings-group">
+            <label class="settings-label" for="setting-marketaux-key">Marketaux API Key</label>
+            <input type="password" id="setting-marketaux-key" class="settings-input" placeholder="Paste custom token..." />
+            <span class="settings-hint">Leave blank for QuantView Live Feed</span>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label" for="setting-finnhub-key">Finnhub / FMP API Key</label>
+            <input type="password" id="setting-finnhub-key" class="settings-input" placeholder="Paste custom token..." />
+            <span class="settings-hint">Leave blank for built-in fallback</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons Row -->
       <div class="settings-btn-row">
-        <button id="btn-save-settings" class="btn-analyze" style="padding: 0.65rem 1.5rem;">Save Settings</button>
+        <button id="btn-reset-settings" class="btn-settings-reset" type="button" title="Reset all options to default values">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="reset-btn-svg"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+          <span>Reset to Defaults</span>
+        </button>
+        <button id="btn-save-settings" class="btn-settings-save" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" class="save-btn-svg"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          <span>Apply &amp; Save</span>
+        </button>
       </div>
     </div>
   </div>
@@ -1277,7 +1358,7 @@
           <div class="footer-links-col">
             <span class="fl-head">Community</span>
             <a href="https://github.com/AXON-09/stock_recommendations" target="_blank">GitHub Repository</a>
-            <a href="https://linkedin.com" target="_blank">LinkedIn</a>
+            <a href="https://www.linkedin.com/in/ashutosh-nayak-b0b43a2a8/" target="_blank" rel="noopener noreferrer">LinkedIn (Ashutosh Nayak)</a>
           </div>
         </div>
 

@@ -15,6 +15,7 @@ Validates:
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -407,3 +408,71 @@ class TestAPIErrorHandling:
         assert "ps_ratio" in inst
         assert "trading_volume_str" in inst
         assert "gross_margin_pct" in inst
+
+    def test_live_watchlist_endpoint(self):
+        """Live watchlist endpoint must return items with quote fields."""
+        from main import app
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get("/api/watchlist/live")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert "items" in data
+        assert isinstance(data["items"], list)
+        if len(data["items"]) > 0:
+            first = data["items"][0]
+            assert "ticker" in first
+            assert "name" in first
+            assert "price" in first
+            assert "change" in first
+            assert "volumeRatio" in first
+
+    def test_live_news_endpoint(self):
+        """Live news endpoint must return authentic news articles with sentiment."""
+        from main import app
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get("/api/news/live")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert "articles" in data
+        assert isinstance(data["articles"], list)
+
+    def test_metrics_endpoint(self):
+        """Operational metrics endpoint must return telemetry and request statistics."""
+        from main import app
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get("/api/metrics")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert "uptime_seconds" in data
+        assert "total_requests" in data
+        assert "cache_hits" in data
+        assert "cache_misses" in data
+
+    def test_rate_limiting_trigger(self):
+        """Rapid bursts beyond rate limit threshold must trigger rate limit detection."""
+        from main import _RATE_LIMIT_STORE, _check_rate_limit, _RATE_LIMIT_MAX_PER_MIN
+        test_ip = "192.0.2.100"
+        _RATE_LIMIT_STORE[test_ip] = [time.time()] * (_RATE_LIMIT_MAX_PER_MIN + 5)
+        # Without test bypass, IP should be rate limited
+        with patch.dict("os.environ", {"PYTEST_CURRENT_TEST": ""}):
+            allowed = _check_rate_limit(test_ip)
+            assert allowed is False
+        _RATE_LIMIT_STORE.clear()
+
+    def test_market_status_endpoint(self):
+        """Market status endpoint must return authentic status for NSE and US markets."""
+        from main import app
+        client = TestClient(app, raise_server_exceptions=True)
+        resp = client.get("/api/market-status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert "nse" in data
+        assert "us" in data
+        assert "is_open" in data["nse"]
+        assert "is_open" in data["us"]
+        assert isinstance(data["nse"]["is_open"], bool)
+        assert isinstance(data["us"]["is_open"], bool)

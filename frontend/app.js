@@ -89,14 +89,28 @@ const num = (v, digits = 2) =>
   v != null && isFinite(v) ? Number(v).toFixed(digits) : 'N/A';
 
 /**
- * Format a monetary value with the correct currency symbol.
+ * Get effective active currency symbol based on user platform settings.
+ */
+function getEffectiveCurrency(dataSym = '$') {
+  try {
+    const s = getPlatformSettings();
+    if (s.currency === 'INR') return '₹';
+    if (s.currency === 'USD') return '$';
+  } catch (e) {}
+  return dataSym || '$';
+}
+
+/**
+ * Format a monetary value with the active currency symbol and locale format.
  * @param {number|null} v - value
  * @param {string} sym - currency symbol, e.g. '₹' or '$'
  * @param {number} digits
  */
 function currency(v, sym = '$', digits = 2) {
   if (v == null || !isFinite(v)) return 'N/A';
-  return `${sym}${Number(v).toLocaleString('en-IN', {
+  const effectiveSym = getEffectiveCurrency(sym);
+  const locale = effectiveSym === '₹' ? 'en-IN' : 'en-US';
+  return `${effectiveSym}${Number(v).toLocaleString(locale, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   })}`;
@@ -1342,14 +1356,20 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
   const svg = document.getElementById('equity-chart');
 
   try {
-    const url = `${API_BASE}/api/backtest/compare?ticker=${encodeURIComponent(ticker)}`;
+    const s = getPlatformSettings();
+    const cap = s.capital || 100000;
+    const fee = (s.cost != null ? s.cost : 0.10) / 100.0;
+    const slip = (s.slippage != null ? s.slippage : 0.05) / 100.0;
+    const sym = getEffectiveCurrency(curSym);
+
+    const url = `${API_BASE}/api/backtest/compare?ticker=${encodeURIComponent(ticker)}&capital=${cap}&cost=${fee}&slippage=${slip}`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    const sym = data.currency_symbol || curSym || '$';
 
     if (periodLabel && data.period) {
-      periodLabel.textContent = `${data.period.start} to ${data.period.end} (${data.period.trading_days} sessions) · ${sym}100k capital · 0.10% fee · 0.05% slippage`;
+      const capStr = Number(cap) >= 1000000 ? `${(cap/1000000).toFixed(1)}M` : (Number(cap) >= 1000 ? `${(cap/1000).toFixed(0)}k` : `${cap}`);
+      periodLabel.textContent = `${data.period.start} to ${data.period.end} (${data.period.trading_days} sessions) · ${sym}${capStr} capital · ${(fee * 100).toFixed(2)}% fee · ${(slip * 100).toFixed(2)}% slippage`;
     }
 
     // 1. Populate Metrics Table
@@ -1364,36 +1384,34 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
         tr.innerHTML = `
           <td class="strat-name-cell"><span class="${badgeClass}"></span> ${s.name}</td>
           <td style="color: ${retColor}; font-weight:700;">${sign}${num(s.total_return, 2)}%</td>
-          <td style="color: ${s.cagr > 0 ? 'var(--green)' : 'var(--red)'};">${cagrSign}${num(s.cagr, 2)}%</td>
+          <td style="color: ${retColor}; font-weight:600;">${cagrSign}${num(s.cagr, 2)}%</td>
           <td>${num(s.sharpe, 2)}</td>
           <td style="color: var(--red);">${num(s.max_drawdown, 2)}%</td>
-          <td>${num(s.volatility, 2)}%</td>
-          <td>${s.trades}</td>
-          <td>${s.name === 'Buy & Hold' ? 'N/A (Holding)' : (s.win_rate != null ? `${num(s.win_rate, 1)}%` : '—')}</td>
+          <td>${num(s.win_rate, 1)}%</td>
+          <td>${s.trade_count}</td>
+          <td style="color: var(--text-2); font-family:var(--font-mono);">${currency(s.final_equity, sym)}</td>
         `;
         tableBody.appendChild(tr);
-
       });
     }
 
-    // 2. Render SVG Equity Curves
-    if (data.equity_curve && data.equity_curve.length > 1) {
-      renderEquityChart(data.equity_curve, sym);
-    }
-
-
-    // 3. Render Cost Scenarios
+    // 2. Populate Cost Scenarios Grid
     if (scenariosGrid && data.cost_scenarios) {
       scenariosGrid.innerHTML = '';
-      data.cost_scenarios.forEach(cs => {
-        const sign = cs.total_return > 0 ? '+' : '';
-        const col = cs.total_return > 0 ? 'var(--green)' : 'var(--red)';
+      data.cost_scenarios.forEach(sc => {
         const card = document.createElement('div');
-        card.className = 'cost-pill';
+        card.className = 'cost-scenario-card glass';
+        const retSign = sc.total_return > 0 ? '+' : '';
+        const retColor = sc.total_return > 0 ? 'var(--green)' : 'var(--red)';
         card.innerHTML = `
-          <div class="cost-pill-fee">Fee: ${cs.cost_label} <button class="info-btn" data-info="cost_sensitivity" aria-label="What is ${cs.cost_label} fee?">ⓘ</button></div>
-          <div class="cost-pill-ret" style="color: ${col};">${sign}${num(cs.total_return, 2)}%</div>
-          <div class="cost-pill-sharpe">Sharpe: ${num(cs.sharpe, 2)} · MaxDD: ${num(cs.max_drawdown, 1)}%</div>
+          <div class="sc-title">${sc.scenario}</div>
+          <div class="sc-desc">${sc.description}</div>
+          <div class="sc-ret" style="color: ${retColor};">${retSign}${num(sc.total_return, 2)}%</div>
+          <div class="sc-metrics">
+            <span>Sharpe: <strong>${num(sc.sharpe, 2)}</strong></span>
+            <span>Max DD: <strong>${num(sc.max_drawdown, 2)}%</strong></span>
+            <span>Trades: <strong>${sc.trade_count}</strong></span>
+          </div>
         `;
         scenariosGrid.appendChild(card);
       });
@@ -1899,20 +1917,63 @@ function renderAll(data) {
   if (window.QV_initInfoIcons) window.QV_initInfoIcons(resultPanel);
   if (window.QV_closeInfoPopover) window.QV_closeInfoPopover();
 
+  // Trigger real notification if confidence threshold is crossed
+  if (window.NotificationService && data) {
+    const ticker = data.ticker || 'ASSET';
+    const prob = data.probability;
+    const rec = data.recommendation;
+    const priceVal = data.price;
+    const sym = data.market?.currency_symbol || (data.market?.is_india ? '₹' : '$');
+    const priceStr = priceVal ? `${sym}${priceVal.toLocaleString()}` : '';
+
+    if (prob != null) {
+      const probPct = Math.round(prob * 100);
+      if (prob >= 0.60) {
+        window.NotificationService.addNotification({
+          title: `AI Bullish Signal: ${ticker} (${probPct}%)`,
+          message: `${ticker} rated ${rec} with ${probPct}% upward model confidence at ${priceStr}. Regime: ${data.regime?.name || 'Trend'}.`,
+          type: 'ai_regime',
+          ticker: ticker
+        });
+      } else if (prob <= 0.40) {
+        window.NotificationService.addNotification({
+          title: `AI Bearish Caution: ${ticker} (${probPct}%)`,
+          message: `${ticker} rated ${rec} with only ${probPct}% statistical probability at ${priceStr}.`,
+          type: 'market_alert',
+          ticker: ticker
+        });
+      }
+    }
+  }
+
   showResult();
 }
 
 
 
-// ── API call ──────────────────────────────────────────────────────────────────
+// ── API call & Race-Condition Safe Request Manager ─────────────────────────
+let _currentAnalyzeId = 0;
+let _activeAbortController = null;
+
 async function analyze(ticker) {
   if (!ticker) return;
   _lastTicker = ticker;
+
+  if (_activeAbortController) {
+    try {
+      _activeAbortController.abort();
+    } catch (e) {}
+  }
+  _activeAbortController = new AbortController();
+  const currentToken = ++_currentAnalyzeId;
+
   showLoading(ticker);
 
   try {
     const url  = `${API_BASE}/api/recommend?ticker=${encodeURIComponent(ticker)}`;
-    const resp = await fetch(url);
+    const resp = await fetch(url, { signal: _activeAbortController.signal });
+
+    if (currentToken !== _currentAnalyzeId) return; // Stale request guard
 
     if (!resp.ok) {
       let errMsg = `Server error ${resp.status}`;
@@ -1925,6 +1986,8 @@ async function analyze(ticker) {
     }
 
     const data = await resp.json();
+    if (currentToken !== _currentAnalyzeId) return; // Stale request guard
+
     if (!data.success && data.error) {
       showError(data.error);
       return;
@@ -1932,6 +1995,8 @@ async function analyze(ticker) {
 
     renderAll(data);
   } catch (err) {
+    if (err.name === 'AbortError') return; // Ignore superseded request
+    if (currentToken !== _currentAnalyzeId) return;
     showError(
       `Network error — is the server running? Start it with: python run.py`
     );
@@ -1986,14 +2051,7 @@ window.addEventListener('keydown', e => {
   }
 });
 
-// Mobile Sidebar toggle
-const sidebarToggleBtn = document.getElementById('sidebar-toggle');
-const sidebarEl = document.getElementById('app-sidebar');
-if (sidebarToggleBtn && sidebarEl) {
-  sidebarToggleBtn.addEventListener('click', () => {
-    sidebarEl.classList.toggle('open');
-  });
-}
+// Mobile & Desktop Sidebar events initialized via initSidebarNavigation()
 
 errorRetry.addEventListener('click', () => {
   if (_lastTicker) analyze(_lastTicker);
@@ -2308,10 +2366,25 @@ async function renderLiveWatchlist(showSkeleton = false) {
     `;
   }
 
-  // Fetch live top 10 gainers & movers with localStorage fallback
+  // Fetch live top 10 gainers & movers with backend real quotes
   const items = await window.WatchlistService.fetchLiveWatchlist();
   if (lastUpdatedEl) {
     lastUpdatedEl.textContent = 'Last Updated: ' + window.WatchlistService.getLastUpdated();
+  }
+
+  // Trigger real notification for significant intraday price swings (>= 2.5%)
+  if (items && Array.isArray(items) && window.NotificationService) {
+    items.forEach(it => {
+      const chgNum = parseFloat(String(it.change || '').replace('%', '').replace('+', ''));
+      if (Math.abs(chgNum) >= 2.5) {
+        window.NotificationService.addNotification({
+          title: `Intraday Surge Alert: ${it.ticker} (${it.change})`,
+          message: `${it.name || it.ticker} registered a ${it.change} daily swing with ${it.volumeRatio || '1.0x'} volume multiple.`,
+          type: 'market_alert',
+          ticker: it.ticker
+        });
+      }
+    });
   }
 
   tbody.innerHTML = '';
@@ -2464,9 +2537,9 @@ function initNotificationCenter() {
   if (!btnNotif || !dropdown) return;
 
   function updateNotifUI() {
-    if (!window.NotificationService || !notifList) return;
-    const items = window.NotificationService.getNotifications();
-    const unread = window.NotificationService.getUnreadCount();
+    if (!notifList) return;
+    const items = window.NotificationService ? window.NotificationService.getNotifications() : [];
+    const unread = window.NotificationService ? window.NotificationService.getUnreadCount() : 0;
 
     if (countBadge) {
       countBadge.textContent = unread;
@@ -2480,26 +2553,71 @@ function initNotificationCenter() {
     }
 
     notifList.innerHTML = '';
-    if (items.length === 0) {
-      notifList.innerHTML = '<div class="notif-empty">No alerts or notifications</div>';
+    if (!items || items.length === 0) {
+      notifList.innerHTML = `
+        <div class="notif-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="notif-empty-icon"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+          <div style="font-weight: 600; color: var(--text-2);">No New Alerts</div>
+          <div style="font-size: 0.75rem; color: var(--text-3);">Run an AI analysis or view the live watchlist to trigger notifications.</div>
+        </div>
+      `;
       return;
     }
 
     items.forEach(item => {
-      const el = document.createElement('div');
-      el.className = `notif-item ${item.isRead ? 'read' : 'unread'}`;
-      el.innerHTML = `
-        <div class="notif-item-top">
-          <span class="notif-type-tag ${item.type}">${item.type.replace('_', ' ').toUpperCase()}</span>
-          <span class="notif-time">${item.timestamp}</span>
-        </div>
-        <h5 class="notif-item-title">${item.title}</h5>
-        <p class="notif-item-msg">${item.message}</p>
-        ${item.ticker ? `<button class="notif-action-analyze qp-btn" data-ticker="${item.ticker}">Analyze ${item.ticker} →</button>` : ''}
-      `;
-      notifList.appendChild(el);
+      if (!item) return;
+      try {
+        const el = document.createElement('div');
+        el.className = `notif-item ${item.isRead ? 'read' : 'unread'}`;
+        el.dataset.id = item.id;
+        const relTime = window.NotificationService ? window.NotificationService.formatRelativeTime(item.timestamp) : 'Just now';
+        const itemType = (item.type || 'alert').replace('_', ' ').toUpperCase();
+        const itemTitle = item.title || 'Market Update';
+        const itemMsg = item.message || '';
+        const ticker = item.ticker ? String(item.ticker).toUpperCase() : null;
+
+        el.innerHTML = `
+          <div class="notif-item-top">
+            <span class="notif-type-tag ${item.type || 'ai_regime'}">${itemType}</span>
+            <span class="notif-time">${relTime}</span>
+          </div>
+          <h5 class="notif-item-title">${itemTitle}</h5>
+          <p class="notif-item-msg">${itemMsg}</p>
+          ${ticker ? `<button class="notif-action-analyze" data-ticker="${ticker}">Analyze ${ticker} →</button>` : ''}
+        `;
+
+        // Clicking action button analyzes ticker directly
+        const btnAnalyze = el.querySelector('.notif-action-analyze');
+        if (btnAnalyze) {
+          btnAnalyze.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const t = btnAnalyze.dataset.ticker;
+            if (window.NotificationService) window.NotificationService.markAsRead(item.id);
+            dropdown.classList.add('hidden');
+            if (t && typeof analyze === 'function') {
+              const input = document.getElementById('ticker-input');
+              if (input) input.value = t;
+              analyze(t);
+            }
+          });
+        }
+
+        // Clicking notification card marks it read
+        el.addEventListener('click', () => {
+          if (!item.isRead && window.NotificationService) {
+            window.NotificationService.markAsRead(item.id);
+            updateNotifUI();
+          }
+        });
+
+        notifList.appendChild(el);
+      } catch (err) {
+        console.error('Error rendering notification card:', err);
+      }
     });
   }
+
+  window.updateNotificationBadge = updateNotifUI;
 
   btnNotif.onclick = (e) => {
     e.stopPropagation();
@@ -2534,10 +2652,142 @@ function initNotificationCenter() {
   updateNotifUI();
 }
 
-// ── Settings Modal ──────────────────────────────────────────────────────────
+// ── Settings & Preferences Storage Manager ──────────────────────────────────
+const DEFAULT_SETTINGS = {
+  currency: 'auto',
+  horizon: '20',
+  capital: 100000,
+  cost: 0.10,
+  slippage: 0.05,
+  marketaux_key: '',
+  finnhub_key: '',
+  live_pulse: true
+};
 
-// ── Unified Sidebar Navigation Manager ──────────────────────────────────────
+function getPlatformSettings() {
+  try {
+    const raw = localStorage.getItem('qv_platform_settings');
+    if (raw) return Object.assign({}, DEFAULT_SETTINGS, JSON.parse(raw));
+  } catch (e) {
+    console.warn('Error reading settings from localStorage:', e);
+  }
+  return Object.assign({}, DEFAULT_SETTINGS);
+}
+
+function savePlatformSettings(newSettings) {
+  try {
+    const merged = Object.assign({}, getPlatformSettings(), newSettings);
+    localStorage.setItem('qv_platform_settings', JSON.stringify(merged));
+    window.dispatchEvent(new CustomEvent('qv:settings-updated', { detail: merged }));
+    return merged;
+  } catch (e) {
+    console.error('Error saving settings to localStorage:', e);
+    return null;
+  }
+}
+
+// ── Unified Sidebar Navigation & Mobile Responsive Manager ──────────────────
 function initSidebarNavigation() {
+  const sidebarEl = document.getElementById('app-sidebar');
+  const sidebarToggleBtn = document.getElementById('sidebar-toggle');
+  const sidebarCloseBtn = document.getElementById('sidebar-close-btn');
+  const sidebarCollapseBtn = document.getElementById('sidebar-collapse-btn');
+  const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+  const mainWrapper = document.querySelector('.app-main-wrapper');
+
+  // Mobile Open / Close Functions
+  function openMobileSidebar() {
+    if (sidebarEl) sidebarEl.classList.add('open');
+    if (sidebarBackdrop) sidebarBackdrop.classList.remove('hidden');
+    document.body.style.overflow = window.innerWidth <= 1024 ? 'hidden' : '';
+  }
+
+  function closeMobileSidebar() {
+    if (sidebarEl) sidebarEl.classList.remove('open');
+    if (sidebarBackdrop) sidebarBackdrop.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  function toggleMobileSidebar() {
+    if (sidebarEl && sidebarEl.classList.contains('open')) {
+      closeMobileSidebar();
+    } else {
+      openMobileSidebar();
+    }
+  }
+
+  // Desktop Collapse Toggle Function
+  function toggleDesktopCollapse() {
+    if (!sidebarEl) return;
+    const isNowCollapsed = !sidebarEl.classList.contains('collapsed');
+    if (isNowCollapsed) {
+      sidebarEl.classList.add('collapsed');
+      if (mainWrapper) mainWrapper.classList.add('sidebar-collapsed');
+    } else {
+      sidebarEl.classList.remove('collapsed');
+      if (mainWrapper) mainWrapper.classList.remove('sidebar-collapsed');
+    }
+    try {
+      localStorage.setItem('qv_sidebar_collapsed', isNowCollapsed ? 'true' : 'false');
+    } catch (e) {}
+  }
+
+  // Restore Desktop Collapsed state if stored
+  try {
+    if (window.innerWidth > 1024 && localStorage.getItem('qv_sidebar_collapsed') === 'true') {
+      if (sidebarEl) sidebarEl.classList.add('collapsed');
+      if (mainWrapper) mainWrapper.classList.add('sidebar-collapsed');
+    }
+  } catch (e) {}
+
+  // Wire Button Listeners
+  if (sidebarToggleBtn) {
+    sidebarToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.innerWidth <= 1024) {
+        toggleMobileSidebar();
+      } else {
+        toggleDesktopCollapse();
+      }
+    });
+  }
+
+  if (sidebarCloseBtn) {
+    sidebarCloseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeMobileSidebar();
+    });
+  }
+
+  if (sidebarCollapseBtn) {
+    sidebarCollapseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDesktopCollapse();
+    });
+  }
+
+  if (sidebarBackdrop) {
+    sidebarBackdrop.addEventListener('click', () => {
+      closeMobileSidebar();
+    });
+  }
+
+  // Keyboard shortcut (Ctrl + [ / Cmd + [) to toggle collapse
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === '[') {
+      e.preventDefault();
+      toggleDesktopCollapse();
+    }
+    if (e.key === 'Escape') {
+      closeMobileSidebar();
+      const modal = document.getElementById('settings-modal-overlay');
+      if (modal && !modal.classList.contains('hidden')) {
+        modal.classList.add('hidden');
+      }
+    }
+  });
+
+  // Handle Navigation Links
   const navItems = [
     { id: 'nav-link-dash', target: '#result-panel', isDash: true },
     { id: 'nav-link-chart', target: '#stock-chart-card', requiresAnalysis: true },
@@ -2554,15 +2804,13 @@ function initSidebarNavigation() {
     if (!linkEl) return;
 
     linkEl.addEventListener('click', (e) => {
-      // Close mobile sidebar if open
-      const sidebarEl = document.getElementById('app-sidebar');
-      if (sidebarEl) sidebarEl.classList.remove('open');
+      // Close mobile sidebar immediately when any nav item is clicked
+      closeMobileSidebar();
 
       // Settings modal handler
       if (item.isSettings) {
         e.preventDefault();
-        const modal = document.getElementById('settings-modal-overlay');
-        if (modal) modal.classList.remove('hidden');
+        openSettingsModal();
         return;
       }
 
@@ -2603,18 +2851,76 @@ function initSidebarNavigation() {
   updateAnalysisNavVisibility(_hasAnalysis);
 }
 
+// ── Apply Settings Globally Across Platform ────────────────────────────────
+function applyPlatformSettings(settings = null) {
+  const s = settings || getPlatformSettings();
+
+  // 1. Live Pulse animations on cards
+  if (s.live_pulse === false) {
+    document.body.classList.add('disable-live-pulses');
+  } else {
+    document.body.classList.remove('disable-live-pulses');
+  }
+
+  // 2. Immediate re-render of active stock results if loaded
+  if (window._qvLastData) {
+    const data = window._qvLastData;
+    const sym = getEffectiveCurrency(data.market?.currency_symbol || (data.market?.is_india ? '₹' : '$'));
+    _chartCurrency = sym;
+    _equityCurrency = sym;
+
+    // Update Hero and price displays
+    renderHero(data);
+    renderStockChart(data);
+    renderInstitutionalIntelligence(data);
+    renderConfidence(data);
+    renderSignals(data);
+    renderValuation(data);
+    fetchAndRenderBenchmark(data.ticker, sym);
+  }
+}
+
+// ── Functional Settings Modal Controller ────────────────────────────────────
+function openSettingsModal() {
+  const modal = document.getElementById('settings-modal-overlay');
+  if (!modal) return;
+
+  const settings = getPlatformSettings();
+
+  const elCurr = document.getElementById('setting-currency');
+  const elHor = document.getElementById('setting-horizon');
+  const elCap = document.getElementById('setting-capital');
+  const elCost = document.getElementById('setting-cost');
+  const elSlip = document.getElementById('setting-slippage');
+  const elMktKey = document.getElementById('setting-marketaux-key');
+  const elFhKey = document.getElementById('setting-finnhub-key');
+  const elPulse = document.getElementById('setting-live-pulse');
+
+  if (elCurr) elCurr.value = settings.currency || 'auto';
+  if (elHor) elHor.value = String(settings.horizon || '20');
+  if (elCap) elCap.value = settings.capital || 100000;
+  if (elCost) elCost.value = settings.cost || 0.10;
+  if (elSlip) elSlip.value = settings.slippage || 0.05;
+  if (elMktKey) elMktKey.value = settings.marketaux_key || '';
+  if (elFhKey) elFhKey.value = settings.finnhub_key || '';
+  if (elPulse) elPulse.checked = settings.live_pulse !== false;
+
+  modal.classList.remove('hidden');
+}
+
 function initSettingsModal() {
   const navSettings = document.getElementById('nav-link-settings');
   const modal = document.getElementById('settings-modal-overlay');
   const closeBtn = document.getElementById('settings-modal-close');
   const saveBtn = document.getElementById('btn-save-settings');
+  const resetBtn = document.getElementById('btn-reset-settings');
 
   if (!modal) return;
 
   if (navSettings) {
     navSettings.onclick = (e) => {
       e.preventDefault();
-      modal.classList.remove('hidden');
+      openSettingsModal();
     };
   }
 
@@ -2626,20 +2932,104 @@ function initSettingsModal() {
     if (e.target === modal) modal.classList.add('hidden');
   };
 
+  if (resetBtn) {
+    resetBtn.onclick = () => {
+      savePlatformSettings(DEFAULT_SETTINGS);
+      applyPlatformSettings(DEFAULT_SETTINGS);
+      openSettingsModal();
+      resetBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="reset-btn-svg" style="transform:rotate(-360deg)"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg> <span>Defaults Restored ✓</span>';
+      setTimeout(() => {
+        resetBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="reset-btn-svg"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg> <span>Reset to Defaults</span>';
+      }, 1200);
+    };
+  }
+
   if (saveBtn) {
     saveBtn.onclick = () => {
-      saveBtn.textContent = '✓ Saved Successfully';
+      const elCurr = document.getElementById('setting-currency');
+      const elHor = document.getElementById('setting-horizon');
+      const elCap = document.getElementById('setting-capital');
+      const elCost = document.getElementById('setting-cost');
+      const elSlip = document.getElementById('setting-slippage');
+      const elMktKey = document.getElementById('setting-marketaux-key');
+      const elFhKey = document.getElementById('setting-finnhub-key');
+      const elPulse = document.getElementById('setting-live-pulse');
+
+      const newSettings = {
+        currency: elCurr ? elCurr.value : 'auto',
+        horizon: elHor ? elHor.value : '20',
+        capital: elCap ? parseFloat(elCap.value) || 100000 : 100000,
+        cost: elCost ? parseFloat(elCost.value) || 0.10 : 0.10,
+        slippage: elSlip ? parseFloat(elSlip.value) || 0.05 : 0.05,
+        marketaux_key: elMktKey ? elMktKey.value.trim() : '',
+        finnhub_key: elFhKey ? elFhKey.value.trim() : '',
+        live_pulse: elPulse ? elPulse.checked : true
+      };
+
+      savePlatformSettings(newSettings);
+      applyPlatformSettings(newSettings);
+
+      saveBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" class="save-btn-svg"><polyline points="20 6 9 17 4 12"></polyline></svg> <span>✓ Applied &amp; Saved</span>';
       setTimeout(() => {
-        saveBtn.textContent = 'Save Settings';
+        saveBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" class="save-btn-svg"><polyline points="20 6 9 17 4 12"></polyline></svg> <span>Apply &amp; Save</span>';
         modal.classList.add('hidden');
-      }, 800);
+      }, 500);
     };
+  }
+}
+
+// ── Live Exchange Trading Session Status Manager ────────────────────────────
+async function updateMarketStatusPills() {
+  const pillNse = document.getElementById('pill-nse-status');
+  const pillUs = document.getElementById('pill-us-status');
+  const nseText = document.getElementById('nse-status-text');
+  const usText = document.getElementById('us-status-text');
+
+  if (!pillNse || !pillUs) return;
+
+  function applyStatus(data) {
+    if (!data) return;
+    if (data.nse) {
+      const isOpen = Boolean(data.nse.is_open);
+      pillNse.className = `market-status-pill ${isOpen ? 'market-open' : 'market-closed'}`;
+      if (nseText) nseText.textContent = `NSE ${isOpen ? 'Open' : 'Closed'}`;
+      pillNse.setAttribute('title', `National Stock Exchange of India (NSE / BSE): ${data.nse.status}`);
+    }
+    if (data.us) {
+      const isOpen = Boolean(data.us.is_open);
+      pillUs.className = `market-status-pill ${isOpen ? 'market-open' : 'market-closed'}`;
+      if (usText) usText.textContent = `US ${isOpen ? 'Open' : 'Closed'}`;
+      pillUs.setAttribute('title', `US Markets (NYSE / NASDAQ): ${data.us.status}`);
+    }
+  }
+
+  // 1. Instant hydration from cached state to avoid any layout flicker
+  try {
+    const cached = localStorage.getItem('QV_MARKET_STATE');
+    if (cached) {
+      applyStatus(JSON.parse(cached));
+    }
+  } catch (e) {}
+
+  // 2. Fetch fresh live state from backend
+  try {
+    const base = (window.location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '');
+    const resp = await fetch(base + '/api/market-status');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    applyStatus(data);
+    localStorage.setItem('QV_MARKET_STATE', JSON.stringify(data));
+  } catch (err) {
+    console.debug('[MarketStatus] Status fetch skipped:', err);
   }
 }
 
 // Re-hook DOM load for full platform suite
 function initPlatform() {
   document.body.classList.add('qv-loaded');
+  applyPlatformSettings();
+  updateMarketStatusPills();
+  setInterval(updateMarketStatusPills, 60000); // 60s market status refresh
   renderLiveWatchlist();
   initNewsPortal();
   initSidebarNavigation();
