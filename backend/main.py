@@ -126,7 +126,7 @@ def _check_rate_limit(client_ip: str) -> bool:
     return True
 
 # ---------------------------------------------------------------------------
-# In-memory cache  {resolved_ticker → CacheEntry}
+# In-memory LRU Cache with Thread-Safe Eviction Cap {resolved_ticker → CacheEntry}
 # ---------------------------------------------------------------------------
 class CacheEntry:
     def __init__(self, model: StockRecommender, X: pd.DataFrame, df: pd.DataFrame, info: Optional[dict] = None):
@@ -153,7 +153,76 @@ class CacheEntry:
         }
 
 
-_cache: Dict[str, CacheEntry] = {}
+from collections import OrderedDict
+import threading
+
+class LRUCache:
+    """Thread-safe bounded in-memory LRU cache to prevent memory exhaustion."""
+    def __init__(self, maxsize: int = 50):
+        self._maxsize = maxsize
+        self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: str, default: Optional[CacheEntry] = None) -> Optional[CacheEntry]:
+        with self._lock:
+            if key not in self._cache:
+                return default
+            entry = self._cache[key]
+            if entry.is_stale:
+                del self._cache[key]
+                return default
+            self._cache.move_to_end(key)
+            return entry
+
+    def __getitem__(self, key: str) -> CacheEntry:
+        val = self.get(key)
+        if val is None:
+            raise KeyError(key)
+        return val
+
+    def __setitem__(self, key: str, entry: CacheEntry) -> None:
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+            self._cache[key] = entry
+            if len(self._cache) > self._maxsize:
+                self._cache.popitem(last=False)
+
+    def __contains__(self, key: str) -> bool:
+        with self._lock:
+            if key not in self._cache:
+                return False
+            if self._cache[key].is_stale:
+                del self._cache[key]
+                return False
+            return True
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._cache)
+
+    def pop(self, key: str, default: Any = None) -> Any:
+        with self._lock:
+            return self._cache.pop(key, default)
+
+    def keys(self) -> List[str]:
+        with self._lock:
+            return list(self._cache.keys())
+
+    def items(self) -> List[Tuple[str, CacheEntry]]:
+        with self._lock:
+            return list(self._cache.items())
+
+    def values(self) -> List[CacheEntry]:
+        with self._lock:
+            return list(self._cache.values())
+
+    def clear(self) -> None:
+        with self._lock:
+            self._cache.clear()
+
+
+_cache = LRUCache(maxsize=50)
 
 
 # ---------------------------------------------------------------------------
@@ -489,7 +558,13 @@ def _build_lstm_sequence(
 )
 def get_recommendation(
     request: Request,
-    ticker: str = Query(..., description="Stock or ETF ticker (e.g. AAPL, RELIANCE, RELIANCE.NS, SPY)"),
+    ticker: str = Query(
+        ...,
+        min_length=1,
+        max_length=25,
+        pattern=r"^[A-Za-z0-9.\-_^]{1,25}$",
+        description="Stock or ETF ticker (e.g. AAPL, RELIANCE, RELIANCE.NS, SPY)"
+    ),
     refresh: bool = Query(False, description="Force-retrain model ignoring the cache"),
 ) -> RecommendationResponse:
     """
@@ -829,7 +904,13 @@ def get_recommendation(
 
 @app.get("/api/backtest/compare", response_model=BenchmarkResponse, tags=["Backtesting"])
 def compare_strategies(
-    ticker:   str   = Query(..., description="Stock ticker (e.g. AAPL, RELIANCE, TCS.NS)"),
+    ticker:   str   = Query(
+        ...,
+        min_length=1,
+        max_length=25,
+        pattern=r"^[A-Za-z0-9.\-_^]{1,25}$",
+        description="Stock ticker (e.g. AAPL, RELIANCE, TCS.NS)"
+    ),
     capital:  float = Query(cfg.STARTING_CAPITAL, description="Starting capital in base currency"),
     cost:     float = Query(cfg.TRANSACTION_COST, description="Transaction fee per trade (e.g. 0.001)"),
     slippage: float = Query(cfg.SLIPPAGE, description="Execution slippage (e.g. 0.0005)"),
@@ -1284,6 +1365,7 @@ def get_operational_metrics():
         "cache_hit_ratio": round(_METRICS["cache_hits"] / max(1, _METRICS["recommend_requests"]), 3),
         "training_failures": _METRICS["training_failures"],
         "cached_tickers_count": len(_cache),
+        "max_cache_capacity": 50,
     }
 
 @app.get("/api/health", tags=["Utility"])
