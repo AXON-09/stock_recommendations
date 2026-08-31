@@ -1380,6 +1380,8 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
         const retColor = s.total_return > 0 ? 'var(--green)' : s.total_return < 0 ? 'var(--red)' : 'var(--text-1)';
         const sign = s.total_return > 0 ? '+' : '';
         const cagrSign = s.cagr > 0 ? '+' : '';
+        const tradeCount = s.trades != null ? s.trades : (s.trade_count != null ? s.trade_count : '—');
+        const eqValue = s.final_equity != null ? currency(s.final_equity, sym) : '—';
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="strat-name-cell"><span class="${badgeClass}"></span> ${s.name}</td>
@@ -1388,8 +1390,8 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
           <td>${num(s.sharpe, 2)}</td>
           <td style="color: var(--red);">${num(s.max_drawdown, 2)}%</td>
           <td>${num(s.win_rate, 1)}%</td>
-          <td>${s.trade_count}</td>
-          <td style="color: var(--text-2); font-family:var(--font-mono);">${currency(s.final_equity, sym)}</td>
+          <td>${tradeCount}</td>
+          <td style="color: var(--text-2); font-family:var(--font-mono);">${eqValue}</td>
         `;
         tableBody.appendChild(tr);
       });
@@ -1403,18 +1405,22 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
         card.className = 'cost-scenario-card glass';
         const retSign = sc.total_return > 0 ? '+' : '';
         const retColor = sc.total_return > 0 ? 'var(--green)' : 'var(--red)';
+        const costTitle = sc.cost_label || sc.scenario || 'Scenario';
         card.innerHTML = `
-          <div class="sc-title">${sc.scenario}</div>
-          <div class="sc-desc">${sc.description}</div>
+          <div class="sc-title">${costTitle}</div>
           <div class="sc-ret" style="color: ${retColor};">${retSign}${num(sc.total_return, 2)}%</div>
           <div class="sc-metrics">
             <span>Sharpe: <strong>${num(sc.sharpe, 2)}</strong></span>
             <span>Max DD: <strong>${num(sc.max_drawdown, 2)}%</strong></span>
-            <span>Trades: <strong>${sc.trade_count}</strong></span>
           </div>
         `;
         scenariosGrid.appendChild(card);
       });
+    }
+
+    // 3. Render Strategy Equity Curve & Sync Currency Symbol
+    if (data.equity_curve && Array.isArray(data.equity_curve) && data.equity_curve.length > 0) {
+      renderEquityChart(data.equity_curve, sym);
     }
 
     const bmCard = document.getElementById('benchmark-card');
@@ -2576,9 +2582,16 @@ function initNotificationCenter() {
         const itemMsg = item.message || '';
         const ticker = item.ticker ? String(item.ticker).toUpperCase() : null;
 
+        const iconMap = {
+          ai_regime: '⚡',
+          market_alert: '🔔',
+          breaking_news: '📰'
+        };
+        const typeIcon = iconMap[item.type] || '📌';
+
         el.innerHTML = `
           <div class="notif-item-top">
-            <span class="notif-type-tag ${item.type || 'ai_regime'}">${itemType}</span>
+            <span class="notif-type-tag ${item.type || 'ai_regime'}"><span class="notif-icon-prefix">${typeIcon}</span> ${itemType}</span>
             <span class="notif-time">${relTime}</span>
           </div>
           <h5 class="notif-item-title">${itemTitle}</h5>
@@ -2992,13 +3005,13 @@ async function updateMarketStatusPills() {
     if (data.nse) {
       const isOpen = Boolean(data.nse.is_open);
       pillNse.className = `market-status-pill ${isOpen ? 'market-open' : 'market-closed'}`;
-      if (nseText) nseText.textContent = `NSE ${isOpen ? 'Open' : 'Closed'}`;
+      if (nseText) nseText.textContent = isOpen ? 'Open' : 'Closed';
       pillNse.setAttribute('title', `National Stock Exchange of India (NSE / BSE): ${data.nse.status}`);
     }
     if (data.us) {
       const isOpen = Boolean(data.us.is_open);
       pillUs.className = `market-status-pill ${isOpen ? 'market-open' : 'market-closed'}`;
-      if (usText) usText.textContent = `US ${isOpen ? 'Open' : 'Closed'}`;
+      if (usText) usText.textContent = isOpen ? 'Open' : 'Closed';
       pillUs.setAttribute('title', `US Markets (NYSE / NASDAQ): ${data.us.status}`);
     }
   }

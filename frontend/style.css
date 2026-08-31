@@ -2299,10 +2299,41 @@ body.disable-live-pulses .sidebar-link-glow {
   margin-top: 1.25rem;
 }
 
+.disclaimer-box.prominent-disclaimer {
+  margin-top: 1.75rem;
+  padding: 1.1rem 1.35rem;
+  background: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: var(--radius-md);
+}
+
+.disclaimer-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fbbf24;
+  letter-spacing: 0.02em;
+}
+
+.disclaimer-icon {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  max-width: 18px !important;
+  max-height: 18px !important;
+  flex-shrink: 0;
+  color: #f59e0b;
+}
+
 .disclaimer-text {
   font-size: 0.75rem;
   color: var(--text-3);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 /* ── Watchlist Section with Official Company Logos ──────────────────────────── */
@@ -3702,13 +3733,21 @@ body.disable-live-pulses .sidebar-link-glow {
 
 .notif-type-tag {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
+  font-size: 0.65rem;
   font-weight: 700;
-  padding: 0.15rem 0.45rem;
+  padding: 0.15rem 0.5rem;
   border-radius: var(--radius-xs);
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-2);
   letter-spacing: 0.03em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.notif-icon-prefix {
+  font-size: 0.72rem;
+  line-height: 1;
 }
 
 .notif-type-tag.ai_regime { color: #60a5fa; background: rgba(59, 130, 246, 0.18); border: 1px solid rgba(59, 130, 246, 0.3); }
