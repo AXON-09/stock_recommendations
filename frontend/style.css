@@ -105,21 +105,22 @@ body {
 
 /* Sidebar */
 .app-sidebar {
-  width: 260px;
+  width: 250px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   display: flex;
   flex-direction: column;
-  padding: 0 1rem 1.5rem 1rem;
+  padding: 0 0.85rem 1.25rem 0.85rem;
   position: fixed;
   top: 0;
   bottom: 0;
   left: 0;
   z-index: 150;
-  transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), padding 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease;
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1), padding 0.28s cubic-bezier(0.4, 0, 0.2, 1), transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: width, transform;
+  box-sizing: border-box;
 }
 
 .sidebar-brand {
@@ -127,7 +128,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0 0.5rem;
+  padding: 0 0.4rem;
   border-bottom: 1px solid var(--border);
   margin-bottom: 1.25rem;
   box-sizing: border-box;
@@ -750,7 +751,7 @@ body.disable-live-pulses .sidebar-link-glow {
 }
 
 .market-chip {
-  padding: 1rem 1.15rem;
+  padding: 1rem 1.25rem;
   border-radius: var(--radius-md);
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -759,6 +760,10 @@ body.disable-live-pulses .sidebar-link-glow {
   overflow: hidden;
   cursor: pointer;
   user-select: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 88px;
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -776,50 +781,66 @@ body.disable-live-pulses .sidebar-link-glow {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.5rem;
 }
 
 .chip-name {
   font-family: var(--font-heading);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 700;
   color: var(--text-2);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .chip-flag {
-  font-size: 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-3);
+  letter-spacing: 0.05em;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .chip-bottom {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  gap: 0.75rem;
+  width: 100%;
 }
 
 .chip-price {
   font-family: var(--font-mono);
-  font-size: 1.05rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--text-1);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
 .chip-change {
   font-family: var(--font-mono);
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
-.chip-change.pos { color: var(--success); }
-.chip-change.neg { color: var(--danger); }
+.chip-change.pos {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.chip-change.neg {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+}
 
 .chip-sparkline {
-  position: absolute;
-  right: 0.5rem;
-  bottom: 0.35rem;
-  width: 70px;
-  height: 20px;
-  opacity: 0.4;
+  display: none;
 }
 
 /* ── Generic Glass Cards ───────────────────────────────────────────────────── */
@@ -2904,43 +2925,79 @@ body.disable-live-pulses .sidebar-link-glow {
     display: flex;
   }
   
-  /* Desktop Collapsed Sidebar */
+  /* Desktop Collapsed Sidebar (Smooth, Uncluttered, Pixel-Perfect) */
   .app-sidebar.collapsed {
-    width: 72px;
-    padding: 0 0.5rem 1.5rem 0.5rem;
+    width: 68px;
+    padding: 0 0.35rem 1.25rem 0.35rem;
   }
   .app-sidebar.collapsed .brand-title-wrap,
   .app-sidebar.collapsed .sidebar-label,
+  .app-sidebar.collapsed .sidebar-close-btn,
+  .app-sidebar.collapsed .sidebar-collapse-btn,
   .app-sidebar.collapsed .sidebar-link span,
+  .app-sidebar.collapsed .sidebar-link-glow,
+  .app-sidebar.collapsed .analysis-nav-item,
   .app-sidebar.collapsed .sidebar-engine-card {
-    opacity: 0;
-    max-width: 0;
-    max-height: 0;
-    transform: translateX(-10px);
-    pointer-events: none;
-    margin: 0;
-    padding: 0;
+    display: none !important;
   }
   .app-sidebar.collapsed .sidebar-brand {
     justify-content: center;
     padding: 0;
+    cursor: pointer;
+  }
+  .app-sidebar.collapsed .diamond-svg {
+    margin: 0 auto;
+    width: 28px;
+    height: 28px;
+    display: block;
+    transform: none !important;
+  }
+  .app-sidebar.collapsed .sidebar-menu-group {
+    align-items: center;
+    gap: 0.45rem;
   }
   .app-sidebar.collapsed .sidebar-link {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    margin: 0 auto;
     justify-content: center;
-    padding: 0.75rem 0;
-    margin: 0.35rem 0;
-    border-radius: var(--radius-sm);
+    align-items: center;
+    border-radius: 10px;
+    position: relative;
   }
   .app-sidebar.collapsed .sidebar-link svg {
-    margin-right: 0;
-    width: 22px;
-    height: 22px;
+    margin: 0;
+    width: 20px;
+    height: 20px;
+    stroke: var(--text-3);
   }
-  .app-sidebar.collapsed .collapse-icon-svg {
-    transform: rotate(180deg);
+  .app-sidebar.collapsed .sidebar-link:hover {
+    background: rgba(56, 189, 248, 0.12);
+    transform: scale(1.05);
+  }
+  .app-sidebar.collapsed .sidebar-link:hover svg {
+    stroke: var(--primary);
+  }
+  .app-sidebar.collapsed .sidebar-link.active {
+    background: rgba(56, 189, 248, 0.18);
+    box-shadow: 0 0 16px rgba(56, 189, 248, 0.25);
+  }
+  .app-sidebar.collapsed .sidebar-link.active svg {
+    stroke: #38bdf8;
+  }
+  .app-sidebar.collapsed .sidebar-bottom-group {
+    margin-top: auto;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
   }
   .app-main-wrapper.sidebar-collapsed {
-    margin-left: 72px;
+    margin-left: 68px;
   }
 }
 
@@ -5170,26 +5227,7 @@ body.disable-live-pulses .sidebar-link-glow {
   }
 }
 
-/* ── Search & Hero Section ─────────────────────────────────────────────────── */
-.search-card {
-  width: 100%;
-  margin-bottom: 0 !important;
-}
-
-.search-input-group {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  width: 100%;
-}
-
-.search-input-wrap {
-  position: relative;
-  flex: 1;
-  display: flex;
-  align-items: center;
-}
-
+/* ── Search & Hero Section Harmonized Rules ──────────────────────────────── */
 .search-icon-svg {
   position: absolute;
   left: 1.15rem;
@@ -5197,25 +5235,6 @@ body.disable-live-pulses .sidebar-link-glow {
   height: 20px;
   stroke: var(--text-3, #64748b);
   pointer-events: none;
-}
-
-.search-input {
-  width: 100%;
-  background: rgba(15, 23, 42, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 0.95rem 1.15rem 0.95rem 3rem;
-  color: #f8fafc;
-  font-size: 1rem;
-  font-family: var(--font-body);
-  transition: all 0.2s ease;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #38bdf8;
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
-  background: rgba(15, 23, 42, 0.95);
 }
 
 .btn-primary-glow {

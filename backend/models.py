@@ -704,13 +704,20 @@ class StockRecommender:
 
         # ── Stacking ensemble ────────────────────────────────────────────────
         lstm_used = getattr(self, "_lstm_used_in_stacking", False)
-        if lstm_used and lstm_result.probability is not None and self.calibrator is not None:
-            ens_in = np.array([[xgb_p, lstm_result.probability]])
-        else:
-            # XGBoost-only stacking
-            ens_in = np.array([[xgb_p]])
         if self.calibrator is not None:
-            ens_p = float(self.calibrator.predict_proba(ens_in)[0][1])
+            try:
+                if lstm_used and lstm_result.probability is not None:
+                    ens_in = np.array([[xgb_p, lstm_result.probability]])
+                    ens_p = float(self.calibrator.predict_proba(ens_in)[0][1])
+                elif not lstm_used:
+                    ens_in = np.array([[xgb_p]])
+                    ens_p = float(self.calibrator.predict_proba(ens_in)[0][1])
+                else:
+                    # Calibrator was trained expecting (xgb, lstm), but lstm is unavailable at inference
+                    ens_p = xgb_p
+            except Exception as exc:
+                log.warning("Calibrator prediction failed (%s); falling back to XGBoost probability", exc)
+                ens_p = xgb_p
         else:
             ens_p = xgb_p   # fallback: use XGBoost directly
 
@@ -855,6 +862,12 @@ class StockRecommender:
             if isinstance(base_val, (np.ndarray, list)):
                 base_val = float(base_val[-1])
 
+            # Convert log-odds margin base value to probability space [0, 1]
+            if base_val < 0.0 or base_val > 1.0:
+                base_prob = float(1.0 / (1.0 + np.exp(-base_val)))
+            else:
+                base_prob = base_val
+
             model_out = float(self.xgb_model.predict_proba(x_scaled)[0][1])
 
             pos_items: List[Dict[str, Any]] = []
@@ -882,7 +895,7 @@ class StockRecommender:
 
             return ExplanationResult(
                 available=True,
-                base_value=round(base_val, 4),
+                base_value=round(base_prob, 4),
                 model_output=round(model_out, 4),
                 top_positive_features=pos_items[:top_n],
                 top_negative_features=neg_items[:top_n],

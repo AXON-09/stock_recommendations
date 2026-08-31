@@ -29,8 +29,10 @@ signal (shown in the UI) and is intentionally excluded from ML features.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
+import urllib.parse
 from dataclasses import dataclass
 from typing import Optional, Tuple, List, Dict, Any
 
@@ -598,6 +600,18 @@ def extract_features(ticker: str) -> AssetFeatures:
     row   = df.iloc[-1]
     price = float(row["Close"])
 
+    # Attempt to use standardized live quote if available
+    try:
+        try:
+            from backend.quote_provider import quote_provider
+        except ImportError:
+            from quote_provider import quote_provider
+        live_q = quote_provider.get_quote(ticker)
+        if live_q and live_q.price > 0 and np.isfinite(live_q.price):
+            price = float(live_q.price)
+    except Exception as exc:
+        log.debug("[%s] Live quote sync in extract_features skipped: %s", ticker, exc)
+
     # Guard against NaN in price
     if not np.isfinite(price) or price <= 0:
         raise ValueError(f"Invalid price ({price}) for '{ticker}'.")
@@ -621,11 +635,10 @@ def extract_features(ticker: str) -> AssetFeatures:
     # Fundamentals (rule-based signal only — see module docstring)
     sector   = str(info.get("sector", "Unknown") or "Unknown")
     # Valuation metrics (P/E, peer P/E, P/B) are intentionally not applicable
-    # to ETFs/funds — a fund's reported "P/E" (when present at all) reflects
-    # the underlying basket, not a single business, and is not comparable to
-    # a sector peer median the way a stock's P/E is. Force these to None for
-    # ETFs so the UI/API never has to explain a stray number.
-    if market.is_etf:
+    # to ETFs/funds or benchmark indices — a fund's or index's reported "P/E"
+    # reflects the underlying basket, not a single business. Force these to None for
+    # ETFs and indices so the UI/API never shows misleading corporate metrics.
+    if market.is_etf or getattr(market, "is_index", False):
         pe_ratio = None
         peer_pe  = None
         pe_rel   = None
@@ -752,7 +765,6 @@ def build_feature_matrix(
     # Forward returns and labels
     df["fwd_return"] = df["Close"].shift(-cfg.FORECAST_HORIZON) / df["Close"] - 1
     df["label"]      = (df["fwd_return"] > 0).astype(int)
-    df.dropna(subset=["fwd_return"], inplace=True)
 
     # Regime code (vectorised — avoids slow iterrows)
     adx_mask_trend = df["adx"] > cfg.ADX_TREND_THRESHOLD
@@ -762,11 +774,14 @@ def build_feature_matrix(
     df.loc[up_mask,   "regime_code"] =  1
     df.loc[down_mask, "regime_code"] = -1
 
-    X = df[cfg.FEATURE_COLS].copy()
-    y = df["label"].copy()
+    # Preserve full un-truncated feature matrix up to bar T (for live inference sequence)
+    X_full = df[cfg.FEATURE_COLS].copy().replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    df.attrs["X_full"] = X_full
 
-    # Replace any remaining NaN/inf with 0 (data quality guard)
-    X = X.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    # Training rows only (drops trailing 20 bars where future return is unknown)
+    df_train = df.dropna(subset=["fwd_return"]).copy()
+    X = df_train[cfg.FEATURE_COLS].copy().replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    y = df_train["label"].copy()
 
     return X, y, df
 
@@ -1243,7 +1258,7 @@ def fetch_press_releases(ticker: str, limit: int = 25) -> List[Dict[str, Any]]:
                     "title": f"{display_t} Reports Audited Financial Results and Board Actions for the Quarter",
                     "publisher": "PR Newswire",
                     "time_ago": "2 days ago",
-                    "link": f"https://finance.yahoo.com/quote/{encodeURIComponent(ticker)}" if 'encodeURIComponent' in globals() else f"https://finance.yahoo.com/quote/{ticker}",
+                    "link": f"https://finance.yahoo.com/quote/{urllib.parse.quote(ticker)}",
                     "uuid": f"pr-0"
                 },
                 {

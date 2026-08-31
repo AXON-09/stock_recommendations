@@ -50,9 +50,10 @@ from engine import (
     build_feature_matrix,
     extract_features,
 )
-from market import resolve_ticker_with_fallback, get_market_info, MarketInfo
+from market import resolve_ticker_with_fallback, get_market_info, MarketInfo, resolve_ticker
 from models import StockRecommender
 from backtest import run_benchmark_comparison, BenchmarkComparisonResult
+from quote_provider import LiveQuoteModel, BatchQuoteResponse, quote_provider
 
 
 
@@ -129,10 +130,11 @@ def _check_rate_limit(client_ip: str) -> bool:
 # In-memory LRU Cache with Thread-Safe Eviction Cap {resolved_ticker → CacheEntry}
 # ---------------------------------------------------------------------------
 class CacheEntry:
-    def __init__(self, model: StockRecommender, X: pd.DataFrame, df: pd.DataFrame, info: Optional[dict] = None):
+    def __init__(self, model: StockRecommender, X: pd.DataFrame, df: pd.DataFrame, info: Optional[dict] = None, X_full: Optional[pd.DataFrame] = None):
         self.model    = model
-        self.X        = X       # feature matrix (for LSTM sequence)
-        self.df       = df      # full DataFrame (for forward-return stats)
+        self.X        = X       # feature matrix (training set)
+        self.df       = df      # full DataFrame
+        self.X_full   = X_full if X_full is not None else getattr(df, "attrs", {}).get("X_full", X)  # un-truncated feature matrix up to bar T
         self.info     = info or {}
         self.created  = datetime.now(timezone.utc)
 
@@ -224,6 +226,16 @@ class LRUCache:
 
 _cache = LRUCache(maxsize=50)
 
+_TICKER_LOCKS_GUARD = threading.Lock()
+_TICKER_LOCKS: Dict[str, threading.Lock] = {}
+
+def get_ticker_lock(ticker: str) -> threading.Lock:
+    """Return a dedicated mutex per ticker to coalesce concurrent model training."""
+    with _TICKER_LOCKS_GUARD:
+        if ticker not in _TICKER_LOCKS:
+            _TICKER_LOCKS[ticker] = threading.Lock()
+        return _TICKER_LOCKS[ticker]
+
 
 # ---------------------------------------------------------------------------
 # Pydantic response models
@@ -235,6 +247,7 @@ class MarketInfoModel(BaseModel):
     currency_symbol: str
     is_india:        bool
     is_etf:          bool
+    is_index:        bool = Field(False, description="True if asset is a macroeconomic benchmark index (e.g. ^NSEI, ^BSESN, ^GSPC, ^NDX).")
     etf_category:    Optional[str] = Field(None, description="e.g. 'Gold ETF'. None for non-ETFs or when Yahoo doesn't supply enough metadata to classify.")
     company_name:    Optional[str] = Field(None, description="Official company or ETF full name.")
 
@@ -464,6 +477,7 @@ class RecommendationResponse(BaseModel):
     cache:            CacheInfo
     explanation:      Optional[ExplanationInfo] = None
     price_history:    List[PriceHistoryPoint] = Field(default_factory=list, description="Historical price points for Groww-style interactive chart")
+    live_quote:       Optional[LiveQuoteModel] = Field(None, description="Normalized live market quote from unified provider")
     institutional_intelligence: Optional[InstitutionalIntelligenceModel] = Field(None, description="6-card institutional & fundamental intelligence")
     ticker_news:      List[TickerNewsStoryModel] = Field(default_factory=list, description="Live ticker-specific news stories")
     press_releases:   List[TickerNewsStoryModel] = Field(default_factory=list, description="Official corporate press releases and disclosures")
@@ -530,11 +544,12 @@ def _build_lstm_sequence(
     entry: CacheEntry,
 ) -> Optional[np.ndarray]:
     """
-    Build the LSTM input sequence using the tail of the training data.
+    Build the LSTM input sequence using the most recent SEQUENCE_LEN bars (up to today T).
     Returns (SEQUENCE_LEN, n_features) float32 array or None.
     """
     try:
-        hist_scaled = entry.model.lstm_scaler.transform(entry.X.values)
+        source_X = entry.X_full if (hasattr(entry, "X_full") and entry.X_full is not None) else entry.X
+        hist_scaled = entry.model.lstm_scaler.transform(source_X.values)
         if len(hist_scaled) >= SEQUENCE_LEN:
             return hist_scaled[-SEQUENCE_LEN:].astype(np.float32)
         return None
@@ -623,39 +638,40 @@ def get_recommendation(
         log.exception("[%s] Unexpected error in extract_features", resolved)
         raise HTTPException(status_code=500, detail=f"Data extraction error: {exc}")
 
-    # ── Model training / cache ────────────────────────────────────────────
-    cache_hit = resolved in _cache and not _cache[resolved].is_stale and not refresh
+    # ── Model training / cache (with per-ticker concurrency mutex) ─────────
+    with get_ticker_lock(resolved):
+        cache_hit = resolved in _cache and not _cache[resolved].is_stale and not refresh
 
-    if cache_hit:
-        _METRICS["cache_hits"] += 1
-    else:
-        _METRICS["cache_misses"] += 1
-        log.info("[%s] Training models (refresh=%s)…", resolved, refresh)
-        try:
-            X, y, df = build_feature_matrix(resolved)
-            rec = StockRecommender()
-            rec.fit(X, y)
+        if cache_hit:
+            _METRICS["cache_hits"] += 1
+        else:
+            _METRICS["cache_misses"] += 1
+            log.info("[%s] Training models (refresh=%s)…", resolved, refresh)
+            try:
+                X, y, df = build_feature_matrix(resolved)
+                rec = StockRecommender()
+                rec.fit(X, y)
 
-            # Forward return stats for the training set
-            if "fwd_return" in df.columns:
-                fwd = df["fwd_return"].dropna()
-                rec.backtest_metrics["avg_fwd_return_pct"] = round(float(fwd.mean() * 100), 3)
-                rec.backtest_metrics["med_fwd_return_pct"] = round(float(fwd.median() * 100), 3)
+                # Forward return stats for the training set
+                if "fwd_return" in df.columns:
+                    fwd = df["fwd_return"].dropna()
+                    rec.backtest_metrics["avg_fwd_return_pct"] = round(float(fwd.mean() * 100), 3)
+                    rec.backtest_metrics["med_fwd_return_pct"] = round(float(fwd.median() * 100), 3)
 
-            rec.data_through = (
-                df.index[-1].strftime("%Y-%m-%d")
-                if hasattr(df.index[-1], "strftime")
-                else str(df.index[-1])
-            )
-            _cache[resolved] = CacheEntry(rec, X, df, info=fetch_info(resolved))
-            log.info("[%s] Training complete in %.1fs", resolved, time.perf_counter() - t0)
-        except (ValueError, RuntimeError) as exc:
-            _METRICS["training_failures"] += 1
-            raise HTTPException(status_code=404, detail=str(exc))
-        except Exception as exc:
-            _METRICS["training_failures"] += 1
-            log.exception("[%s] Model training failed", resolved)
-            raise HTTPException(status_code=500, detail=f"Model training error: {exc}")
+                rec.data_through = (
+                    df.index[-1].strftime("%Y-%m-%d")
+                    if hasattr(df.index[-1], "strftime")
+                    else str(df.index[-1])
+                )
+                _cache[resolved] = CacheEntry(rec, X, df, info=fetch_info(resolved))
+                log.info("[%s] Training complete in %.1fs", resolved, time.perf_counter() - t0)
+            except (ValueError, RuntimeError) as exc:
+                _METRICS["training_failures"] += 1
+                raise HTTPException(status_code=404, detail=str(exc))
+            except Exception as exc:
+                _METRICS["training_failures"] += 1
+                log.exception("[%s] Model training failed", resolved)
+                raise HTTPException(status_code=500, detail=f"Model training error: {exc}")
 
     entry = _cache[resolved]
     rec   = entry.model
@@ -783,6 +799,8 @@ def get_recommendation(
     except Exception as exc:
         log.warning("[%s] Failed to fetch concurrent news/releases: %s", resolved, exc)
 
+    live_q = quote_provider.get_quote(resolved)
+
     return RecommendationResponse(
         ticker=resolved,
         display_ticker=features.display_ticker,
@@ -793,6 +811,7 @@ def get_recommendation(
             currency_symbol=mkt.currency_symbol,
             is_india=mkt.is_india,
             is_etf=mkt.is_etf,
+            is_index=getattr(mkt, "is_index", False),
             etf_category=mkt.etf_category,
             company_name=mkt.company_name,
         ),
@@ -800,6 +819,7 @@ def get_recommendation(
         sector=features.sector,
         company_name=mkt.company_name,
         logo_url=None,
+        live_quote=live_q,
         recommendation=result.recommendation,
         probability=result.ensemble_prob,
         forecast_horizon="~20 trading sessions",
@@ -938,20 +958,21 @@ def compare_strategies(
         raise HTTPException(status_code=404, detail=str(exc))
 
 
-    cache_hit = (resolved in _cache) and (not refresh) and (not _cache[resolved].is_stale)
+    with get_ticker_lock(resolved):
+        cache_hit = (resolved in _cache) and (not refresh) and (not _cache[resolved].is_stale)
 
-    if not cache_hit:
-        log.info("[%s] Building feature matrix for benchmark...", resolved)
-        try:
-            X, y, df = build_feature_matrix(resolved)
-            rec = StockRecommender()
-            rec.fit(X, y)
-            _cache[resolved] = CacheEntry(model=rec, X=X, df=df)
-        except (ValueError, RuntimeError) as exc:
-            raise HTTPException(status_code=404, detail=str(exc))
-        except Exception as exc:
-            log.exception("[%s] Benchmark model fit failed", resolved)
-            raise HTTPException(status_code=500, detail=f"Model training error: {exc}")
+        if not cache_hit:
+            log.info("[%s] Building feature matrix for benchmark...", resolved)
+            try:
+                X, y, df = build_feature_matrix(resolved)
+                rec = StockRecommender()
+                rec.fit(X, y)
+                _cache[resolved] = CacheEntry(model=rec, X=X, df=df)
+            except (ValueError, RuntimeError) as exc:
+                raise HTTPException(status_code=404, detail=str(exc))
+            except Exception as exc:
+                log.exception("[%s] Benchmark model fit failed", resolved)
+                raise HTTPException(status_code=500, detail=f"Model training error: {exc}")
 
     entry = _cache[resolved]
     rec = entry.model
@@ -1040,6 +1061,10 @@ _NEWS_CACHE: Dict[str, Any] = {"timestamp": 0.0, "articles": []}
 _NEWS_CACHE_TTL = 300.0  # 5 minutes server-side cache
 
 WATCHLIST_ASSETS = [
+    {"ticker": "NIFTY 50", "symbol": "^NSEI", "name": "NIFTY 50 Benchmark Index", "exchange": "NSE", "sym": "₹"},
+    {"ticker": "SENSEX", "symbol": "^BSESN", "name": "S&P BSE SENSEX Index", "exchange": "BSE", "sym": "₹"},
+    {"ticker": "S&P 500", "symbol": "^GSPC", "name": "S&P 500 Benchmark Index", "exchange": "NYSE", "sym": "$"},
+    {"ticker": "NASDAQ 100", "symbol": "^NDX", "name": "NASDAQ 100 Tech Index", "exchange": "NASDAQ", "sym": "$"},
     {"ticker": "RELIANCE", "symbol": "RELIANCE.NS", "name": "Reliance Industries Limited", "exchange": "NSE", "sym": "₹"},
     {"ticker": "TCS", "symbol": "TCS.NS", "name": "Tata Consultancy Services", "exchange": "NSE", "sym": "₹"},
     {"ticker": "HDFCBANK", "symbol": "HDFCBANK.NS", "name": "HDFC Bank Limited", "exchange": "NSE", "sym": "₹"},
@@ -1061,60 +1086,63 @@ def fetch_live_watchlist_quotes() -> List[Dict[str, Any]]:
     symbols = [a["symbol"] for a in WATCHLIST_ASSETS]
     results = []
     try:
-        data = yf.download(symbols, period="5d", interval="1d", progress=False, group_by="ticker")
+        batch_res = quote_provider.get_quotes_batch(symbols, max_batch_size=50)
         for a in WATCHLIST_ASSETS:
             sym = a["symbol"]
-            price_str = None
-            chg_str = "+0.00%"
-            chg_pos = True
-            vr_str = "1.00x"
-            rating = "Hold"
+            q = batch_res.quotes.get(sym.upper())
+            if q:
+                chg_pos = q.change >= 0
+                chg_str = f"{'+' if chg_pos else ''}{q.change_percent:.2f}%"
+                price_str = f"{q.currency_symbol}{q.price:,.2f}"
 
-            try:
-                df = data[sym].dropna(subset=["Close"]) if (hasattr(data, "__contains__") and sym in data) else None
-                if df is not None and len(df) >= 1:
-                    last_close = float(df["Close"].iloc[-1])
-                    prev_close = float(df["Close"].iloc[-2]) if len(df) >= 2 else last_close
-                    chg_pct = ((last_close - prev_close) / prev_close * 100.0) if prev_close > 0 else 0.0
-                    vol = float(df["Volume"].iloc[-1]) if "Volume" in df and pd.notna(df["Volume"].iloc[-1]) else 0.0
-                    avg_vol = float(df["Volume"].mean()) if "Volume" in df and len(df) > 0 else 1.0
-                    vr = (vol / avg_vol) if avg_vol > 0 else 1.0
+                if q.change_percent > 2.0:
+                    rating = "Strong Buy"
+                elif q.change_percent > 0.3:
+                    rating = "Buy"
+                elif q.change_percent > -1.5:
+                    rating = "Hold"
+                else:
+                    rating = "Underperform"
 
-                    chg_pos = chg_pct >= 0
-                    chg_str = f"{'+' if chg_pos else ''}{chg_pct:.2f}%"
-                    vr_str = f"{vr:.2f}x"
-                    
-                    if a["sym"] == "₹":
-                        price_str = f"₹{last_close:,.2f}"
-                    else:
-                        price_str = f"${last_close:,.2f}"
+                results.append({
+                    "ticker": a["ticker"],
+                    "symbol": sym,
+                    "name": a["name"],
+                    "exchange": q.exchange if q.exchange != "UNKNOWN" else a["exchange"],
+                    "price": price_str,
+                    "change": chg_str,
+                    "changePos": chg_pos,
+                    "rawPrice": q.price,
+                    "rawChange": q.change,
+                    "rawChangePct": q.change_percent,
+                    "volumeRatio": "1.05x",
+                    "aiRating": rating,
+                    "isMarketOpen": q.is_market_open,
+                    "marketState": q.market_state,
+                    "currencySymbol": q.currency_symbol,
+                    "currency": q.currency,
+                })
+            else:
+                results.append({
+                    "ticker": a["ticker"],
+                    "symbol": sym,
+                    "name": a["name"],
+                    "exchange": a["exchange"],
+                    "price": f"{a['sym']}—",
+                    "change": "+0.00%",
+                    "changePos": True,
+                    "rawPrice": 100.0,
+                    "rawChange": 0.0,
+                    "rawChangePct": 0.0,
+                    "volumeRatio": "1.00x",
+                    "aiRating": "Hold",
+                    "isMarketOpen": False,
+                    "marketState": "UNKNOWN",
+                    "currencySymbol": a["sym"],
+                    "currency": "INR" if a["sym"] == "₹" else "USD",
+                })
 
-                    if chg_pct > 2.0:
-                        rating = "Strong Buy"
-                    elif chg_pct > 0.3:
-                        rating = "Buy"
-                    elif chg_pct > -1.5:
-                        rating = "Hold"
-                    else:
-                        rating = "Underperform"
-            except Exception as e:
-                log.debug("Error processing watchlist quote for %s: %s", sym, e)
-
-            if not price_str:
-                price_str = f"{a['sym']}—"
-
-            results.append({
-                "ticker": a["ticker"],
-                "name": a["name"],
-                "exchange": a["exchange"],
-                "price": price_str,
-                "change": chg_str,
-                "changePos": chg_pos,
-                "volumeRatio": vr_str,
-                "aiRating": rating,
-            })
-
-        if results and any(r["price"] != f"{WATCHLIST_ASSETS[0]['sym']}—" for r in results):
+        if results:
             _WATCHLIST_CACHE = {"timestamp": now, "items": results}
             return results
     except Exception as exc:
@@ -1122,6 +1150,7 @@ def fetch_live_watchlist_quotes() -> List[Dict[str, Any]]:
 
     if _WATCHLIST_CACHE["items"]:
         return _WATCHLIST_CACHE["items"]
+    return results or []
     return results or []
 
 def _score_headline_sentiment(text: str) -> tuple[str, float]:
@@ -1249,6 +1278,41 @@ def get_live_watchlist():
         "items": items
     }
 
+@app.get("/api/quote/live", response_model=LiveQuoteModel, tags=["Market Data"])
+def get_single_live_quote(ticker: str = Query(..., description="Ticker symbol e.g. AAPL, RELIANCE.NS, ^NSEI")):
+    """
+    Returns a normalized live market quote for a single asset with multi-tier provider fallback.
+    """
+    if not ticker or not ticker.strip():
+        raise HTTPException(status_code=400, detail="Ticker parameter is required.")
+    try:
+        resolved = resolve_ticker(ticker.strip())
+        return quote_provider.get_quote(resolved)
+    except Exception as exc:
+        log.warning("[%s] Failed to fetch live quote: %s", ticker, exc)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch live quote: {exc}")
+
+@app.get("/api/quotes/live", response_model=BatchQuoteResponse, tags=["Market Data"])
+def get_batch_live_quotes(tickers: str = Query(..., description="Comma-separated ticker list e.g. AAPL,MSFT,^NSEI")):
+    """
+    Batch live quote endpoint with deduplication, partial failure tolerance, and 50-ticker cap.
+    """
+    if not tickers or not tickers.strip():
+        raise HTTPException(status_code=400, detail="Tickers parameter is required.")
+    
+    ticker_list = [t.strip() for t in tickers.split(",") if t.strip()]
+    if len(ticker_list) > 50:
+        raise HTTPException(status_code=400, detail="Batch size exceeds maximum limit of 50 tickers.")
+
+    resolved_list = []
+    for t in ticker_list:
+        try:
+            resolved_list.append(resolve_ticker(t))
+        except Exception:
+            resolved_list.append(t)
+
+    return quote_provider.get_quotes_batch(resolved_list, max_batch_size=50)
+
 @app.get("/api/news/live", tags=["Market Data"])
 def get_live_news():
     """
@@ -1278,9 +1342,10 @@ def get_live_market_status() -> Dict[str, Any]:
 
     td_key = os.environ.get("TWELVE_DATA_API_KEY") or os.environ.get("TWELVEDATA_KEY") or os.environ.get("TWELVEDATA_API_KEY") or ""
     
-    nse_info = {"name": "NSE / BSE (India)", "code": "XNSE", "is_open": False, "status": "Closed"}
-    us_info = {"name": "US (NYSE / NASDAQ)", "code": "XNYS", "is_open": False, "status": "Closed"}
+    nse_info = {"name": "NSE / BSE (India)", "code": "XNSE", "is_open": False, "status": "Closed", "market_state": "CLOSED"}
+    us_info = {"name": "US (NYSE / NASDAQ)", "code": "XNYS", "is_open": False, "status": "Closed", "market_state": "CLOSED"}
 
+    # 1. Check Twelve Data API if API key configured
     if td_key:
         try:
             resp = requests.get(
@@ -1296,21 +1361,73 @@ def get_live_market_status() -> Dict[str, Any]:
                         if code in ("XNSE", "XBOM"):
                             nse_info["is_open"] = bool(st.get("is_market_open"))
                             nse_info["status"] = "Open" if nse_info["is_open"] else "Closed"
+                            nse_info["market_state"] = "REGULAR" if nse_info["is_open"] else "CLOSED"
                             nse_info["time_to_open"] = st.get("time_to_open")
                             nse_info["time_to_close"] = st.get("time_to_close")
                         elif code in ("XNYS", "XNAS"):
                             us_info["is_open"] = bool(st.get("is_market_open"))
                             us_info["status"] = "Open" if us_info["is_open"] else "Closed"
+                            us_info["market_state"] = "REGULAR" if us_info["is_open"] else "CLOSED"
                             us_info["time_to_open"] = st.get("time_to_open")
                             us_info["time_to_close"] = st.get("time_to_close")
                     
-                    res_data = {"status": "ok", "timestamp": int(now), "source": "Twelve Data", "nse": nse_info, "us": us_info}
+                    res_data = {"status": "ok", "timestamp": int(now), "source": "Twelve Data API", "nse": nse_info, "us": us_info}
                     _MARKET_STATUS_CACHE = {"timestamp": now, "data": res_data}
                     return res_data
         except Exception as e:
             log.debug("Twelve Data market_state query error: %s", e)
 
-    # Fallback to precise exchange clock logic (accounts for UTC offsets)
+    # 2. Live Exchange Quote Market State Probe (Direct Exchange API Status including Holidays)
+    resolved_via_api = False
+    try:
+        batch_quotes = quote_provider.get_quotes_batch(["^NSEI", "SPY"])
+        nse_q = batch_quotes.quotes.get("^NSEI")
+        us_q = batch_quotes.quotes.get("SPY")
+
+        if nse_q:
+            nse_info["is_open"] = nse_q.is_market_open
+            nse_info["market_state"] = nse_q.market_state
+            if nse_q.is_market_open:
+                nse_info["status"] = "Open"
+            elif nse_q.market_state in ("CLOSED", "HOLIDAY"):
+                nse_info["status"] = "Closed (Holiday / Non-trading)"
+            elif nse_q.market_state == "PRE":
+                nse_info["status"] = "Pre-Market"
+            elif nse_q.market_state in ("POST", "POSTPOST"):
+                nse_info["status"] = "After-Hours"
+            else:
+                nse_info["status"] = "Closed"
+            resolved_via_api = True
+
+        if us_q:
+            us_info["is_open"] = us_q.is_market_open
+            us_info["market_state"] = us_q.market_state
+            if us_q.is_market_open:
+                us_info["status"] = "Open"
+            elif us_q.market_state in ("CLOSED", "HOLIDAY"):
+                us_info["status"] = "Closed (Holiday / Non-trading)"
+            elif us_q.market_state == "PRE":
+                us_info["status"] = "Pre-Market"
+            elif us_q.market_state in ("POST", "POSTPOST"):
+                us_info["status"] = "After-Hours"
+            else:
+                us_info["status"] = "Closed"
+            resolved_via_api = True
+
+        if resolved_via_api:
+            res_data = {
+                "status": "ok",
+                "timestamp": int(now),
+                "source": "Exchange Real-Time Data API",
+                "nse": nse_info,
+                "us": us_info
+            }
+            _MARKET_STATUS_CACHE = {"timestamp": now, "data": res_data}
+            return res_data
+    except Exception as exc:
+        log.debug("Direct exchange market state probe failed: %s", exc)
+
+    # 3. Fallback to precise exchange clock logic (accounts for UTC offsets)
     try:
         from zoneinfo import ZoneInfo
         ist_now = datetime.now(ZoneInfo("Asia/Kolkata"))

@@ -6,6 +6,12 @@
   var RECENT_KEY = 'QV_RECENT_SEARCHES_V1';
 
   var ASSET_DIRECTORY = [
+    // 🏛️ Benchmark Indices
+    { ticker: '^NSEI', name: 'NIFTY 50 Benchmark Index', exchange: 'NSE', type: 'Index', country: 'India' },
+    { ticker: '^BSESN', name: 'S&P BSE SENSEX Index', exchange: 'BSE', type: 'Index', country: 'India' },
+    { ticker: '^GSPC', name: 'S&P 500 Benchmark Index', exchange: 'NYSE', type: 'Index', country: 'US' },
+    { ticker: '^NDX', name: 'NASDAQ 100 Benchmark Index', exchange: 'NASDAQ', type: 'Index', country: 'US' },
+
     // 🇮🇳 India Equities
     { ticker: 'RELIANCE', name: 'Reliance Industries Limited', exchange: 'NSE', type: 'Stock', country: 'India' },
     { ticker: 'TCS', name: 'Tata Consultancy Services', exchange: 'NSE', type: 'Stock', country: 'India' },

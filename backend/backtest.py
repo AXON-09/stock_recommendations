@@ -167,7 +167,9 @@ def simulate_strategy(
                         fee = gross_proceeds * transaction_cost
                         cash += (gross_proceeds - fee)
                         if entry_price > 0:
-                            trade_ret = (exec_price - entry_price) / entry_price
+                            net_exit = exec_price * (1.0 - transaction_cost)
+                            net_entry = entry_price * (1.0 + transaction_cost)
+                            trade_ret = (net_exit - net_entry) / net_entry
                             trade_returns.append(trade_ret)
                         shares = 0.0
                         current_pos = 0

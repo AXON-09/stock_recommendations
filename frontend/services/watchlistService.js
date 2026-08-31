@@ -1,19 +1,20 @@
 /**
- * QuantView AI — watchlistService.js v3.0
- * Fetches the 10 Top Gainers & Active Market Movers across Indian & US Equities
- * Refreshes automatically every 5 minutes with localStorage caching & fallback.
+ * QuantView AI — watchlistService.js v3.1
+ * - Live Market Movers (QV_CACHED_WATCHLIST / ephemeral backend quotes)
+ * - Persistent User Saved Watchlist (QV_USER_WATCHLIST_V1 / local user collection)
  */
 
 (function(window) {
   'use strict';
 
-  var CACHE_KEY = 'QV_CACHED_WATCHLIST';
-  var CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+  var MOVERS_CACHE_KEY = 'QV_CACHED_WATCHLIST';
+  var USER_WATCHLIST_KEY = 'QV_USER_WATCHLIST_V1';
 
   window.WatchlistService = {
+    // ── Live Market Movers (Top 10 Gainers & Active Leaders) ───────────────
     getWatchlist: function() {
       try {
-        var raw = localStorage.getItem(CACHE_KEY);
+        var raw = localStorage.getItem(MOVERS_CACHE_KEY);
         if (raw) {
           var parsed = JSON.parse(raw);
           if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
@@ -26,7 +27,7 @@
 
     getLastUpdated: function() {
       try {
-        var raw = localStorage.getItem(CACHE_KEY);
+        var raw = localStorage.getItem(MOVERS_CACHE_KEY);
         if (raw) {
           var parsed = JSON.parse(raw);
           if (parsed && parsed.timestamp) {
@@ -46,7 +47,7 @@
         if (res.ok) {
           var data = await res.json();
           if (data && Array.isArray(data.items) && data.items.length > 0) {
-            localStorage.setItem(CACHE_KEY, JSON.stringify({
+            localStorage.setItem(MOVERS_CACHE_KEY, JSON.stringify({
               items: data.items,
               timestamp: (data.timestamp ? data.timestamp * 1000 : Date.now())
             }));
@@ -59,23 +60,74 @@
       return this.getWatchlist();
     },
 
-    hasItem: function(ticker) {
-      if (!ticker) return false;
-      var items = this.getWatchlist();
-      var t = ticker.toUpperCase();
-      return items.some(function(i) { return (i.ticker || '').toUpperCase() === t; });
+    // ── Persistent User Watchlist (QV_USER_WATCHLIST_V1) ───────────────────
+    getUserWatchlist: function() {
+      try {
+        var raw = localStorage.getItem(USER_WATCHLIST_KEY);
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (e) {}
+      return [
+        { ticker: 'RELIANCE', name: 'Reliance Industries Limited', exchange: 'NSE' },
+        { ticker: 'NVDA', name: 'NVIDIA Corporation', exchange: 'NASDAQ' },
+        { ticker: 'TCS', name: 'Tata Consultancy Services', exchange: 'NSE' },
+        { ticker: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ' }
+      ];
     },
 
-    addItem: function(item) {
+    hasItem: function(ticker) {
+      if (!ticker) return false;
+      var list = this.getUserWatchlist();
+      var t = String(ticker).toUpperCase().trim();
+      return list.some(function(i) {
+        var sym = (typeof i === 'string' ? i : i.ticker || '').toUpperCase().trim();
+        return sym === t || sym.replace('.NS', '').replace('.BO', '') === t.replace('.NS', '').replace('.BO', '');
+      });
+    },
+
+    addItem: function(itemOrTicker) {
+      if (!itemOrTicker) return false;
+      var list = this.getUserWatchlist();
+      var tickerStr = typeof itemOrTicker === 'string' ? itemOrTicker : (itemOrTicker.ticker || '');
+      var t = tickerStr.toUpperCase().trim();
+      if (!t) return false;
+
+      if (!this.hasItem(t)) {
+        var entry = typeof itemOrTicker === 'object' ? itemOrTicker : { ticker: t, name: t };
+        entry.ticker = t;
+        entry.savedAt = Date.now();
+        list.push(entry);
+        try {
+          localStorage.setItem(USER_WATCHLIST_KEY, JSON.stringify(list));
+        } catch (e) {}
+      }
       return true;
     },
 
     removeItem: function(ticker) {
+      if (!ticker) return false;
+      var list = this.getUserWatchlist();
+      var t = String(ticker).toUpperCase().trim();
+      var filtered = list.filter(function(i) {
+        var sym = (typeof i === 'string' ? i : i.ticker || '').toUpperCase().trim();
+        return sym !== t && sym.replace('.NS', '').replace('.BO', '') !== t.replace('.NS', '').replace('.BO', '');
+      });
+      try {
+        localStorage.setItem(USER_WATCHLIST_KEY, JSON.stringify(filtered));
+      } catch (e) {}
       return true;
     },
 
     toggleFavorite: function(ticker) {
-      return true;
+      if (this.hasItem(ticker)) {
+        this.removeItem(ticker);
+        return false;
+      } else {
+        this.addItem(ticker);
+        return true;
+      }
     }
   };
 })(window);

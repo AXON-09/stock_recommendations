@@ -137,3 +137,22 @@ class TestInfoboxAccessibility:
     def test_popover_uses_semantic_role(self):
         text = (FRONTEND_DIR / "infobox.js").read_text(encoding="utf-8")
         assert "role', 'dialog'" in text
+
+
+class TestFrontendCoreArchitecture:
+    """Ensure essential helper functions and event handlers exist to avoid runtime ReferenceErrors."""
+
+    def test_escape_html_helper_defined(self, app_js_text):
+        assert "function escapeHtml" in app_js_text
+
+    def test_platform_settings_defined(self, app_js_text):
+        assert "function getPlatformSettings" in app_js_text
+        assert "function savePlatformSettings" in app_js_text
+
+    def test_canonical_navigation_defined(self, app_js_text):
+        assert "window.navigateToAsset" in app_js_text
+
+    def test_live_quote_service_script_loaded_before_app_js(self, index_html_text):
+        lqi = index_html_text.index('services/liveQuoteService.js')
+        ai = index_html_text.index('app.js')
+        assert lqi < ai, "services/liveQuoteService.js must load before app.js"

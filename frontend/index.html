@@ -101,15 +101,15 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
         </button>
         <div class="market-status-pills-wrap" id="market-status-pills-wrap">
-          <div class="market-status-pill market-open" id="pill-nse-status" title="National Stock Exchange of India (NSE / BSE)">
+          <div class="market-status-pill market-closed" id="pill-nse-status" title="National Stock Exchange of India (NSE / BSE)">
             <span class="mkt-tag nse">NSE/BSE</span>
             <span class="status-indicator-dot" id="nse-status-dot"></span>
-            <span class="status-pill-text" id="nse-status-text">Open</span>
+            <span class="status-pill-text" id="nse-status-text">Closed</span>
           </div>
-          <div class="market-status-pill market-closed" id="pill-us-status" title="US Markets (NYSE / NASDAQ)">
+          <div class="market-status-pill market-open" id="pill-us-status" title="US Markets (NYSE / NASDAQ)">
             <span class="mkt-tag us">US</span>
             <span class="status-indicator-dot" id="us-status-dot"></span>
-            <span class="status-pill-text" id="us-status-text">Closed</span>
+            <span class="status-pill-text" id="us-status-text">Open</span>
           </div>
         </div>
       </div>
@@ -172,49 +172,49 @@
         </div>
       </section>
 
-      <!-- Market Overview Ticker Ribbon -->
-      <section class="market-ribbon-grid">
-        <div class="market-chip glass" data-ticker="NIFTY" onclick="triggerMarketChip('NIFTY')" title="Click to start analysis for NIFTY 50">
+      <!-- Market Overview Ticker Ribbon (Benchmark Indices) -->
+      <section class="market-ribbon-grid" id="market-ribbon-section">
+        <div class="market-chip glass" id="chip-nifty" data-ticker="^NSEI" role="button" tabindex="0" onclick="triggerMarketChip('^NSEI')" title="Click to analyze NIFTY 50 Benchmark Index">
           <div class="chip-top">
             <span class="chip-name">NIFTY 50</span>
             <span class="chip-flag">🇮🇳</span>
           </div>
           <div class="chip-bottom">
-            <span class="chip-price">₹24,541.20</span>
-            <span class="chip-change pos">+0.68%</span>
+            <span class="chip-price" id="chip-nifty-price">₹24,541.20</span>
+            <span class="chip-change pos" id="chip-nifty-change">+0.68%</span>
           </div>
           <svg class="chip-sparkline" viewBox="0 0 100 24"><path d="M0,18 Q20,15 40,20 T70,8 T100,4" fill="none" stroke="#22c55e" stroke-width="2"></path></svg>
         </div>
-        <div class="market-chip glass" data-ticker="SENSEX" onclick="triggerMarketChip('SENSEX')" title="Click to start analysis for SENSEX">
+        <div class="market-chip glass" id="chip-sensex" data-ticker="^BSESN" role="button" tabindex="0" onclick="triggerMarketChip('^BSESN')" title="Click to analyze BSE SENSEX Benchmark Index">
           <div class="chip-top">
             <span class="chip-name">SENSEX</span>
             <span class="chip-flag">🇮🇳</span>
           </div>
           <div class="chip-bottom">
-            <span class="chip-price">₹80,519.34</span>
-            <span class="chip-change pos">+0.62%</span>
+            <span class="chip-price" id="chip-sensex-price">₹80,519.34</span>
+            <span class="chip-change pos" id="chip-sensex-change">+0.62%</span>
           </div>
           <svg class="chip-sparkline" viewBox="0 0 100 24"><path d="M0,16 Q25,18 50,12 T80,6 T100,5" fill="none" stroke="#22c55e" stroke-width="2"></path></svg>
         </div>
-        <div class="market-chip glass" data-ticker="S&P 500" onclick="triggerMarketChip('S&P 500')" title="Click to start analysis for S&P 500">
+        <div class="market-chip glass" id="chip-sp500" data-ticker="^GSPC" role="button" tabindex="0" onclick="triggerMarketChip('^GSPC')" title="Click to analyze S&P 500 Benchmark Index">
           <div class="chip-top">
             <span class="chip-name">S&amp;P 500</span>
             <span class="chip-flag">🇺🇸</span>
           </div>
           <div class="chip-bottom">
-            <span class="chip-price">$5,648.40</span>
-            <span class="chip-change pos">+0.44%</span>
+            <span class="chip-price" id="chip-sp500-price">$5,648.40</span>
+            <span class="chip-change pos" id="chip-sp500-change">+0.44%</span>
           </div>
           <svg class="chip-sparkline" viewBox="0 0 100 24"><path d="M0,19 Q30,14 60,16 T100,6" fill="none" stroke="#22c55e" stroke-width="2"></path></svg>
         </div>
-        <div class="market-chip glass" data-ticker="NASDAQ" onclick="triggerMarketChip('NASDAQ')" title="Click to start analysis for NASDAQ 100">
+        <div class="market-chip glass" id="chip-nasdaq" data-ticker="^NDX" role="button" tabindex="0" onclick="triggerMarketChip('^NDX')" title="Click to analyze NASDAQ 100 Benchmark Index">
           <div class="chip-top">
             <span class="chip-name">NASDAQ 100</span>
             <span class="chip-flag">🇺🇸</span>
           </div>
           <div class="chip-bottom">
-            <span class="chip-price">$19,742.10</span>
-            <span class="chip-change pos">+0.85%</span>
+            <span class="chip-price" id="chip-nasdaq-price">$19,742.10</span>
+            <span class="chip-change pos" id="chip-nasdaq-change">+0.85%</span>
           </div>
           <svg class="chip-sparkline" viewBox="0 0 100 24"><path d="M0,20 Q25,17 50,11 T85,8 T100,3" fill="none" stroke="#22c55e" stroke-width="2"></path></svg>
         </div>
@@ -1038,143 +1038,31 @@
             </div>
           </div>
 
-          <!-- News Items Grid -->
+          <!-- News Items Grid (Dynamically Populated by MarketauxService /api/news/live) -->
           <div class="news-grid" id="news-grid-container">
-            <!-- Article 1 -->
-            <article class="news-item-card" data-category="macro us bullish" data-tickers="AAPL,MSFT,NVDA,SPY,QQQ" data-id="news-1">
-              <div class="news-meta">
-                <span class="news-source">Bloomberg Terminal</span>
-                <span class="news-time">12m ago</span>
+            <div class="news-skeleton-wrap" style="grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+              <div class="skeleton-card glass" style="height: 220px; border-radius: 12px; padding: 16px;">
+                <div class="skeleton-line" style="height: 16px; width: 40%; margin-bottom: 12px;"></div>
+                <div class="skeleton-line" style="height: 22px; width: 90%; margin-bottom: 8px;"></div>
+                <div class="skeleton-line" style="height: 22px; width: 70%; margin-bottom: 16px;"></div>
+                <div class="skeleton-line" style="height: 14px; width: 100%; margin-bottom: 6px;"></div>
+                <div class="skeleton-line" style="height: 14px; width: 85%;"></div>
               </div>
-              <h4 class="news-headline">Fed Signals Steady Rate Trajectory as Megacap AI Capex Continues Accelerating</h4>
-              <p class="news-snippet">Federal Reserve officials reaffirmed data-dependent policy easing while cloud hyperscalers raised forward AI infrastructure capital expenditure projections by 18% year-over-year.</p>
-              <div class="news-bottom-action-row">
-                <div class="news-badge-wrap">
-                  <span class="news-badge-sentiment bullish">● Bullish (+84%)</span>
-                  <span class="news-tag">Macro · AI Capex</span>
-                </div>
-                <button class="news-read-more-btn" data-news-id="1">Full Story →</button>
+              <div class="skeleton-card glass" style="height: 220px; border-radius: 12px; padding: 16px;">
+                <div class="skeleton-line" style="height: 16px; width: 40%; margin-bottom: 12px;"></div>
+                <div class="skeleton-line" style="height: 22px; width: 90%; margin-bottom: 8px;"></div>
+                <div class="skeleton-line" style="height: 22px; width: 70%; margin-bottom: 16px;"></div>
+                <div class="skeleton-line" style="height: 14px; width: 100%; margin-bottom: 6px;"></div>
+                <div class="skeleton-line" style="height: 14px; width: 85%;"></div>
               </div>
-            </article>
-
-            <!-- Article 2 -->
-            <article class="news-item-card" data-category="india bullish" data-tickers="RELIANCE,TCS,HDFCBANK,NIFTYBEES" data-id="news-2">
-              <div class="news-meta">
-                <span class="news-source">Economic Times</span>
-                <span class="news-time">28m ago</span>
+              <div class="skeleton-card glass" style="height: 220px; border-radius: 12px; padding: 16px;">
+                <div class="skeleton-line" style="height: 16px; width: 40%; margin-bottom: 12px;"></div>
+                <div class="skeleton-line" style="height: 22px; width: 90%; margin-bottom: 8px;"></div>
+                <div class="skeleton-line" style="height: 22px; width: 70%; margin-bottom: 16px;"></div>
+                <div class="skeleton-line" style="height: 14px; width: 100%; margin-bottom: 6px;"></div>
+                <div class="skeleton-line" style="height: 14px; width: 85%;"></div>
               </div>
-              <h4 class="news-headline">FII Net Inflows Hit 4-Month High in NSE Bluechips; Banking &amp; Energy Lead Accumulation</h4>
-              <p class="news-snippet">Foreign institutional investors injected ₹8,420 Cr into domestic equities over the past 5 sessions, with heavy block deal volume concentrated in HDFC Bank, Reliance, and TCS.</p>
-              <div class="news-bottom-action-row">
-                <div class="news-badge-wrap">
-                  <span class="news-badge-sentiment bullish">● Bullish Flow (+91%)</span>
-                  <span class="news-tag">NSE · Institutional Inflow</span>
-                </div>
-                <button class="news-read-more-btn" data-news-id="2">Full Story →</button>
-              </div>
-            </article>
-
-            <!-- Article 3 -->
-            <article class="news-item-card" data-category="quant macro" data-tickers="SPY,QQQ,NIFTYBEES" data-id="news-3">
-              <div class="news-meta">
-                <span class="news-source">QuantView Research</span>
-                <span class="news-time">45m ago</span>
-              </div>
-              <h4 class="news-headline">ATR Volatility Compression Signals Imminent Directional Expansion in Global Indices</h4>
-              <p class="news-snippet">Average True Range (ATR%) metrics have dropped into the lower 5th historical percentile across 46% of index weights, creating a classic quantitative volatility squeeze pattern.</p>
-              <div class="news-bottom-action-row">
-                <div class="news-badge-wrap">
-                  <span class="news-badge-sentiment neutral">● Volatility Regime</span>
-                  <span class="news-tag">Technical · ATR Squeeze</span>
-                </div>
-                <button class="news-read-more-btn" data-news-id="3">Full Story →</button>
-              </div>
-            </article>
-
-            <!-- Article 4 -->
-            <article class="news-item-card" data-category="us bullish" data-tickers="NVDA,AMD,MSFT" data-id="news-4">
-              <div class="news-meta">
-                <span class="news-source">Reuters Finance</span>
-                <span class="news-time">1h ago</span>
-              </div>
-              <h4 class="news-headline">Semiconductor Order Backlog Reaches Record High as Enterprise LLM Deployment Expands</h4>
-              <p class="news-snippet">Next-generation GPU architectures witness strong lead times through Q4, supporting gross margin guidance and elevated quantitative earnings momentum factors.</p>
-              <div class="news-bottom-action-row">
-                <div class="news-badge-wrap">
-                  <span class="news-badge-sentiment bullish">● High Conviction (+88%)</span>
-                  <span class="news-tag">Semis · Hardware</span>
-                </div>
-                <button class="news-read-more-btn" data-news-id="4">Full Story →</button>
-              </div>
-            </article>
-
-            <!-- Article 5 -->
-            <article class="news-item-card" data-category="india macro" data-tickers="RELIANCE,ONGC,TATAMOTORS" data-id="news-5">
-              <div class="news-meta">
-                <span class="news-source">Mint &amp; RBI Desk</span>
-                <span class="news-time">2h ago</span>
-              </div>
-              <h4 class="news-headline">India Manufacturing PMI Expands to 58.6; Industrial Capex Cycle Hits Decade High</h4>
-              <p class="news-snippet">Core sector growth sustained strong expansion, supported by railway electrification, renewable capacity additions, and resilient consumer discretionary demand.</p>
-              <div class="news-bottom-action-row">
-                <div class="news-badge-wrap">
-                  <span class="news-badge-sentiment bullish">● Macro Strength (+79%)</span>
-                  <span class="news-tag">Macro · India GDP</span>
-                </div>
-                <button class="news-read-more-btn" data-news-id="5">Full Story →</button>
-              </div>
-            </article>
-
-            <!-- Article 6 -->
-            <article class="news-item-card" data-category="macro bearish" data-tickers="GLD,GOLDBEES,SILVERBEES" data-id="news-6">
-              <div class="news-meta">
-                <span class="news-source">Financial Times</span>
-                <span class="news-time">3h ago</span>
-              </div>
-              <h4 class="news-headline">Treasury Yield Curve Steepens as Sovereign Debt Issuance Surpasses Expectations</h4>
-              <p class="news-snippet">Long-end 10-year yields tested key technical resistance levels, prompting tactical multi-asset risk parity funds to temporarily trim high-beta equity duration.</p>
-              <div class="news-bottom-action-row">
-                <div class="news-badge-wrap">
-                  <span class="news-badge-sentiment bearish">● Risk Off Warning (-54%)</span>
-                  <span class="news-tag">Bonds · Yields</span>
-                </div>
-                <button class="news-read-more-btn" data-news-id="6">Full Story →</button>
-              </div>
-            </article>
-
-            <!-- Article 7 -->
-            <article class="news-item-card" data-category="india us quant" data-tickers="TCS,INFY,HCLTECH,WIPRO" data-id="news-7">
-              <div class="news-meta">
-                <span class="news-source">CNBC-TV18</span>
-                <span class="news-time">4h ago</span>
-              </div>
-              <h4 class="news-headline">IT Services Rebound: Deal Total Contract Value (TCV) Up 14% on Cloud Migration Pipelines</h4>
-              <p class="news-snippet">Indian and global IT bellwethers reported renewal rate stabilization, with margin expansion supported by automated code generation and enterprise AI consulting.</p>
-              <div class="news-bottom-action-row">
-                <div class="news-badge-wrap">
-                  <span class="news-badge-sentiment bullish">● Buy Signal (+76%)</span>
-                  <span class="news-tag">IT Sector · TCV</span>
-                </div>
-                <button class="news-read-more-btn" data-news-id="7">Full Story →</button>
-              </div>
-            </article>
-
-            <!-- Article 8 -->
-            <article class="news-item-card" data-category="quant macro" data-tickers="NIFTYBEES,BANKBEES,SPY" data-id="news-8">
-              <div class="news-meta">
-                <span class="news-source">QuantView Signals</span>
-                <span class="news-time">5h ago</span>
-              </div>
-              <h4 class="news-headline">Ensemble Model Cross-Asset Breadth Indicator Reaches Optimal Trend Alignment</h4>
-              <p class="news-snippet">The proprietary QuantView 20-day regime filter confirms a 'Bull Expansion' state with 78% model consensus across LSTM sequential memory and XGBoost boosted trees.</p>
-              <div class="news-bottom-action-row">
-                <div class="news-badge-wrap">
-                  <span class="news-badge-sentiment bullish">● Ensemble Consensus</span>
-                  <span class="news-tag">Quant · Breadth</span>
-                </div>
-                <button class="news-read-more-btn" data-news-id="8">Full Story →</button>
-              </div>
-            </article>
+            </div>
           </div>
 
           <!-- Empty State (if search finds nothing) -->
@@ -1383,11 +1271,11 @@
 
 <script>
 function triggerMarketChip(ticker) {
-  const inp = document.getElementById('ticker-input');
-  if (inp) inp.value = ticker;
-  if (window.QV_analyze) {
-    window.QV_analyze(ticker);
+  if (window.navigateToAsset) {
+    window.navigateToAsset(ticker);
   } else {
+    const inp = document.getElementById('ticker-input');
+    if (inp) inp.value = ticker;
     const btn = document.getElementById('analyze-btn');
     if (btn) btn.click();
   }
@@ -1400,7 +1288,8 @@ function triggerMarketChip(ticker) {
 <script src="services/marketauxService.js?v=5"></script>
 <script src="services/watchlistService.js?v=5"></script>
 <script src="services/notificationService.js?v=5"></script>
-<script src="services/searchService.js?v=5"></script>
-<script src="app.js?v=10"></script>
+<script src="services/searchService.js?v=13"></script>
+<script src="services/liveQuoteService.js?v=14"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

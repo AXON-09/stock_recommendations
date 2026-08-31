@@ -49,6 +49,7 @@ class MarketInfo:
     currency_symbol: str
     is_india:        bool
     is_etf:          bool
+    is_index:        bool = False
     etf_category:    Optional[str] = None
     company_name:    Optional[str] = None
     """
@@ -436,13 +437,13 @@ def get_market_info(ticker: str, yf_info: dict) -> MarketInfo:
         return MarketInfo(
             country="India", exchange="NSE",
             currency="INR", currency_symbol="₹",
-            is_india=True, is_etf=is_etf, etf_category=etf_category,
+            is_india=True, is_etf=is_etf, is_index=is_index, etf_category=etf_category,
         )
     if ticker_upper.endswith(".BO") or ticker_upper in {"^BSESN"}:
         return MarketInfo(
             country="India", exchange="BSE",
             currency="INR", currency_symbol="₹",
-            is_india=True, is_etf=is_etf, etf_category=etf_category,
+            is_india=True, is_etf=is_etf, is_index=is_index, etf_category=etf_category,
         )
 
     # ── Derive from yfinance metadata ─────────────────────────────────────
@@ -523,7 +524,7 @@ def get_market_info(ticker: str, yf_info: dict) -> MarketInfo:
         country=country, exchange=exchange,
         currency=currency, currency_symbol=currency_symbol,
         is_india=(currency == "INR"),
-        is_etf=is_etf, etf_category=etf_category,
+        is_etf=is_etf, is_index=is_index, etf_category=etf_category,
         company_name=company_name,
     )
 

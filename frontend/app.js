@@ -7,6 +7,18 @@
 const API_BASE = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8000' : '';
 window.QV_API_BASE = API_BASE;
 
+// ── HTML Sanitization & Safety Helper ─────────────────────────────────────────
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+window.escapeHtml = escapeHtml;
+
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const tickerInput  = document.getElementById('ticker-input');
 const analyzeBtn   = document.getElementById('analyze-btn');
@@ -213,16 +225,30 @@ function staggerRevealCards(container) {
 const STEP_ORDER = ['fetch', 'indicators', 'regime', 'backtest', 'train', 'predict'];
 let _stepIdx = 0;
 
+const INDETERMINATE_PHRASES = [
+  'Fitting walk-forward Purged XGBoost decision trees...',
+  'Training sequential PyTorch LSTM temporal memory folds...',
+  'Computing Kernel SHAP feature attribution & baseline Shapley values...',
+  'Evaluating out-of-fold probability calibration & ensemble stacking...',
+  'Compiling institutional intelligence & multi-asset risk metrics...'
+];
+
 function startLoadingSteps(ticker = '') {
+  if (_stepInterval) {
+    clearInterval(_stepInterval);
+    _stepInterval = null;
+  }
+
   _stepIdx = 0;
+  let phraseIdx = 0;
   const titleEl = document.getElementById('loading-title');
+  const tClean = (ticker || 'Asset').toUpperCase();
   if (titleEl) {
-    const tClean = (ticker || 'Asset').toUpperCase();
     titleEl.textContent = `Analyzing ${tClean} Pipeline`;
   }
 
   Object.values(loadingSteps).forEach(el => {
-    if (el) el.classList.remove('active', 'done');
+    if (el) el.classList.remove('active', 'done', 'pulse');
   });
   if (loadingSteps[STEP_ORDER[0]]) {
     loadingSteps[STEP_ORDER[0]].classList.add('active');
@@ -237,9 +263,17 @@ function startLoadingSteps(ticker = '') {
     if (_stepIdx < STEP_ORDER.length && loadingSteps[STEP_ORDER[_stepIdx]]) {
       loadingSteps[STEP_ORDER[_stepIdx]].classList.add('active');
     } else {
-      clearInterval(_stepInterval);
+      // Transition to indeterminate ongoing computation state for long cold-starts
+      const lastStep = loadingSteps[STEP_ORDER[STEP_ORDER.length - 1]];
+      if (lastStep) {
+        lastStep.classList.add('active', 'pulse');
+      }
+      if (titleEl) {
+        titleEl.textContent = `Analyzing ${tClean} · ${INDETERMINATE_PHRASES[phraseIdx % INDETERMINATE_PHRASES.length]}`;
+        phraseIdx++;
+      }
     }
-  }, 1600); // 1.6s visual progression for active stages
+  }, 1600);
 }
 
 function stopLoadingSteps() {
@@ -248,7 +282,10 @@ function stopLoadingSteps() {
     _stepInterval = null;
   }
   Object.values(loadingSteps).forEach(el => {
-    if (el) el.classList.add('done');
+    if (el) {
+      el.classList.remove('active', 'pulse');
+      el.classList.add('done');
+    }
   });
 }
 
@@ -771,18 +808,23 @@ function renderTickerNewsList() {
 
   container.innerHTML = items.map(item => {
     const badge = getPublisherBadge(item.publisher);
+    const safeTitle = escapeHtml(item.title || '');
+    const safeTime = escapeHtml(item.time_ago || 'Recent');
+    const safeLink = (item.link && (item.link.startsWith('http://') || item.link.startsWith('https://')))
+      ? escapeHtml(item.link)
+      : '#';
     return `
       <div class="t-news-item">
         <div class="t-news-meta-row">
           <span class="t-news-publisher-badge">
-            <span class="t-news-icon" style="background:${badge.bg}; color:${badge.color};">${badge.text}</span>
-            <span>${badge.name}</span>
+            <span class="t-news-icon" style="background:${badge.bg}; color:${badge.color};">${escapeHtml(badge.text)}</span>
+            <span>${escapeHtml(badge.name)}</span>
           </span>
           <span>•</span>
-          <span>${item.time_ago || 'Recent'}</span>
+          <span>${safeTime}</span>
         </div>
-        <a href="${item.link || '#'}" target="_blank" rel="noopener noreferrer" class="t-news-headline-link">
-          ${item.title}
+        <a href="${safeLink}" target="_blank" rel="noopener noreferrer" class="t-news-headline-link">
+          ${safeTitle}
         </a>
       </div>
     `;
@@ -793,6 +835,13 @@ function renderHero(data) {
   const mkt = data.market;
   const sym = mkt.currency_symbol || '$';
 
+  // Ingest live quote into central LiveQuoteService
+  if (window.LiveQuoteService) {
+    if (data.live_quote) {
+      window.LiveQuoteService.setQuote(data.ticker, data.live_quote);
+    }
+  }
+
   // 1. Official Company Logo (with smooth fade-in, caching, and placeholder fallback)
   const logoImg = document.getElementById('hero-company-logo');
   if (logoImg && window.QVLogos) {
@@ -802,8 +851,19 @@ function renderHero(data) {
   // 2. Bold Company Name
   const companyNameEl = document.getElementById('res-company-name');
   if (companyNameEl) {
-    companyNameEl.textContent = data.company_name ||
-      (window.QVLogos ? window.QVLogos.getCompanyName(data.ticker, data.display_ticker) : (data.display_ticker || data.ticker));
+    let nameText = data.company_name;
+    if (!nameText || nameText === 'UNKNOWN') {
+      if (mkt.is_index || data.ticker.startsWith('^')) {
+        if (data.ticker === '^NSEI') nameText = 'NIFTY 50 Benchmark Index';
+        else if (data.ticker === '^BSESN') nameText = 'BSE SENSEX Benchmark Index';
+        else if (data.ticker === '^GSPC') nameText = 'S&P 500 Benchmark Index';
+        else if (data.ticker === '^NDX') nameText = 'NASDAQ 100 Benchmark Index';
+        else nameText = `${data.display_ticker || data.ticker} Index`;
+      } else {
+        nameText = window.QVLogos ? window.QVLogos.getCompanyName(data.ticker, data.display_ticker) : (data.display_ticker || data.ticker);
+      }
+    }
+    companyNameEl.textContent = nameText;
   }
 
   // 3. Ticker + market badge
@@ -820,27 +880,40 @@ function renderHero(data) {
   if (mkt.is_india) badge.classList.add('india');
   else if (mkt.currency === 'USD') badge.classList.add('us');
 
-  // ETF badge segment
+  // ETF / Index badge segment
   const etfWrap = document.getElementById('mb-etf-wrap');
-  etfWrap.classList.toggle('hidden', !mkt.is_etf);
+  etfWrap.classList.toggle('hidden', !(mkt.is_etf || mkt.is_index));
 
   // Sector / category line
   const sectorEl = document.getElementById('res-sector');
-  if (mkt.is_etf) {
+  if (mkt.is_index || data.ticker.startsWith('^')) {
+    sectorEl.textContent = 'Macroeconomic Benchmark Index';
+  } else if (mkt.is_etf) {
     sectorEl.textContent = mkt.etf_category || 'Exchange-Traded Fund';
   } else {
     const rawSector = (data.sector || '').trim();
     if (!rawSector || rawSector.toLowerCase() === 'unknown' || rawSector.toLowerCase() === 'none') {
-      sectorEl.textContent = data.ticker.startsWith('^') ? 'Benchmark Market Index' : 'Equities Universe';
+      sectorEl.textContent = 'Equities Universe';
     } else {
       sectorEl.textContent = rawSector;
     }
   }
 
-  // Price — currency-aware animation
+  // Price — synchronized with centralized LiveQuoteService
   const resPriceEl = document.getElementById('res-price');
   if (resPriceEl) {
-    animateNumber(resPriceEl, 0, data.price, 700, v => currency(v, sym));
+    const initPrice = (window.LiveQuoteService && window.LiveQuoteService.getQuote(data.ticker))
+      ? window.LiveQuoteService.getQuote(data.ticker).price
+      : data.price;
+    animateNumber(resPriceEl, 0, initPrice, 700, v => currency(v, sym));
+
+    if (window.LiveQuoteService) {
+      window.LiveQuoteService.subscribe('hero-component', data.ticker, (liveQ) => {
+        if (liveQ && liveQ.price > 0 && resPriceEl) {
+          resPriceEl.textContent = window.LiveQuoteService.formatPrice(liveQ.price, liveQ.currencySymbol);
+        }
+      });
+    }
   }
 
   // Recommendation badge with reveal animation
@@ -1486,8 +1559,38 @@ function drawGrowwStockChart() {
 
   if (!svg || !_priceHistory || _priceHistory.length === 0) return;
 
-  _activeSubset = filterPriceHistory(_activeTimeframe);
-  const pts = _activeSubset;
+  const rawSubset = filterPriceHistory(_activeTimeframe);
+  let pts = (rawSubset || []).map(p => ({ ...p }));
+
+  // Visualization Layer: Merges latest live quote projection without mutating historical series
+  if (window.LiveQuoteService && _lastTicker) {
+    const liveQ = window.LiveQuoteService.getQuote(_lastTicker);
+    if (liveQ && liveQ.price > 0 && pts.length > 0) {
+      const todayStr = (liveQ.lastUpdated || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+      const lastPt = pts[pts.length - 1];
+      if (lastPt.date === todayStr) {
+        pts[pts.length - 1] = {
+          ...lastPt,
+          close: liveQ.price,
+          high: Math.max(lastPt.high || lastPt.close, liveQ.price),
+          low: Math.min(lastPt.low || lastPt.close, liveQ.price),
+        };
+      } else if (lastPt.date < todayStr) {
+        pts.push({
+          date: todayStr,
+          close: liveQ.price,
+          open: liveQ.previousClose || lastPt.close,
+          high: Math.max(liveQ.previousClose || lastPt.close, liveQ.price),
+          low: Math.min(liveQ.previousClose || lastPt.close, liveQ.price),
+          volume: null,
+          sma50: lastPt.sma50,
+          sma200: lastPt.sma200,
+        });
+      }
+    }
+  }
+
+  _activeSubset = pts;
   const n = pts.length;
   if (n < 2) return;
 
@@ -1564,11 +1667,26 @@ function drawGrowwStockChart() {
   }
   gridLayer.innerHTML = gridHTML;
 
-  // Header display
-  priceDisplay.textContent = formatGrowwPrice(lastP, _chartCurrency);
-  const sign = isPositive ? '+' : '';
-  diffDisplay.textContent = `${sign}${formatGrowwPrice(Math.abs(totalChange), _chartCurrency)} (${sign}${totalChangePct.toFixed(2)}%)`;
-  diffDisplay.className = `chart-price-diff ${isPositive ? 'diff-positive' : 'diff-negative'}`;
+  // Header display — synchronized with LiveQuoteService
+  if (window.LiveQuoteService && _lastTicker) {
+    const liveQ = window.LiveQuoteService.getQuote(_lastTicker);
+    if (liveQ && liveQ.price > 0) {
+      priceDisplay.textContent = window.LiveQuoteService.formatPrice(liveQ.price, _chartCurrency);
+      const chgInfo = window.LiveQuoteService.formatChange(liveQ.change, liveQ.changePercent, _chartCurrency);
+      diffDisplay.textContent = chgInfo.text;
+      diffDisplay.className = `chart-price-diff ${chgInfo.isPositive ? 'diff-positive' : 'diff-negative'}`;
+    } else {
+      priceDisplay.textContent = formatGrowwPrice(lastP, _chartCurrency);
+      const sign = isPositive ? '+' : '';
+      diffDisplay.textContent = `${sign}${formatGrowwPrice(Math.abs(totalChange), _chartCurrency)} (${sign}${totalChangePct.toFixed(2)}%)`;
+      diffDisplay.className = `chart-price-diff ${isPositive ? 'diff-positive' : 'diff-negative'}`;
+    }
+  } else {
+    priceDisplay.textContent = formatGrowwPrice(lastP, _chartCurrency);
+    const sign = isPositive ? '+' : '';
+    diffDisplay.textContent = `${sign}${formatGrowwPrice(Math.abs(totalChange), _chartCurrency)} (${sign}${totalChangePct.toFixed(2)}%)`;
+    diffDisplay.className = `chart-price-diff ${isPositive ? 'diff-positive' : 'diff-negative'}`;
+  }
   dateDisplay.textContent = `${formatGrowwDate(pts[0].date)} to ${formatGrowwDate(pts[n - 1].date)} · ${_activeTimeframe}`;
 
   initGrowwPointerEvents();
@@ -1720,6 +1838,12 @@ function initGrowwPointerEvents() {
 function renderStockChart(data) {
   _priceHistory  = data.price_history || [];
   _chartCurrency = data.market?.currency_symbol || (data.market?.is_india ? '₹' : '$');
+  if (window.LiveQuoteService && data.live_quote) {
+    window.LiveQuoteService.setQuote(data.ticker, data.live_quote);
+    if (data.display_ticker && data.display_ticker !== data.ticker) {
+      window.LiveQuoteService.setQuote(data.display_ticker, data.live_quote);
+    }
+  }
   drawGrowwStockChart();
 }
 
@@ -2004,7 +2128,7 @@ async function analyze(ticker) {
     if (err.name === 'AbortError') return; // Ignore superseded request
     if (currentToken !== _currentAnalyzeId) return;
     showError(
-      `Network error — is the server running? Start it with: python run.py`
+      'Network error — the server may be waking from an idle state. Please wait a moment and try again.'
     );
     console.error(err);
   }
@@ -2033,17 +2157,76 @@ tickerInput.addEventListener('keydown', e => {
   }
 });
 
+// ── Canonical Application Navigation Pipeline (Unified Single Entrypoint) ───
+window.navigateToAsset = function(rawTicker) {
+  if (!rawTicker) return;
+  const t = String(rawTicker).trim();
+  if (tickerInput) {
+    tickerInput.value = t;
+  }
+
+  // Lifecycle Management: Unsubscribe previous asset subscriptions
+  if (window.LiveQuoteService && _lastTicker && _lastTicker !== t) {
+    window.LiveQuoteService.unsubscribe('hero-component', _lastTicker);
+    window.LiveQuoteService.unsubscribe('chart-component', _lastTicker);
+  }
+
+  analyze(t);
+  const results = document.getElementById('result-panel');
+  if (results && !results.classList.contains('hidden')) {
+    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+};
+window.QV_analyze = window.navigateToAsset;
+window.triggerMarketChip = function(label) {
+  window.navigateToAsset(label);
+};
+
+function updateMarketRibbon(items) {
+  if (!window.LiveQuoteService) return;
+
+  if (items && Array.isArray(items)) {
+    window.LiveQuoteService.ingestQuotesBatch(items);
+  }
+
+  const indices = [
+    { sym: '^NSEI', pId: 'chip-nifty-price', cId: 'chip-nifty-change' },
+    { sym: '^BSESN', pId: 'chip-sensex-price', cId: 'chip-sensex-change' },
+    { sym: '^GSPC', pId: 'chip-sp500-price', cId: 'chip-sp500-change' },
+    { sym: '^NDX', pId: 'chip-nasdaq-price', cId: 'chip-nasdaq-change' },
+  ];
+
+  indices.forEach(idx => {
+    const q = window.LiveQuoteService.getQuote(idx.sym);
+    if (q && q.price > 0) {
+      const pEl = document.getElementById(idx.pId);
+      const cEl = document.getElementById(idx.cId);
+      if (pEl) pEl.textContent = window.LiveQuoteService.formatPrice(q.price, q.currencySymbol);
+      if (cEl) {
+        const chgInfo = window.LiveQuoteService.formatChange(q.change, q.changePercent, q.currencySymbol);
+        cEl.textContent = chgInfo.percentText;
+        cEl.className = `chip-change ${chgInfo.cssClass}`;
+      }
+    }
+  });
+}
+
 // Global delegated listener for quick-pick buttons, watchlist items, and market ribbon cards
 document.addEventListener('click', e => {
-  const btn = e.target.closest('.qp-btn, .market-chip');
+  const btn = e.target.closest('.qp-btn, .market-chip, .wl-action-btn');
   if (btn && btn.dataset.ticker) {
-    const t = btn.dataset.ticker;
-    tickerInput.value = t;
-    analyze(t);
-    // Smooth scroll to results
-    const results = document.getElementById('result-panel');
-    if (results && !results.classList.contains('hidden')) {
-      results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    e.preventDefault();
+    window.navigateToAsset(btn.dataset.ticker);
+  }
+});
+
+// Delegated keydown listener for keyboard accessibility on interactive elements (Enter / Space)
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    const el = e.target.closest('[role="button"], .market-chip, .qp-btn');
+    if (el && document.activeElement === el) {
+      e.preventDefault();
+      el.click();
     }
   }
 });
@@ -2075,135 +2258,117 @@ document.addEventListener('click', e => {
 });
 
 
-// ── Market News & Intelligence Portal Logic ─────────────────────────────────
-const NEWS_STORIES_DATA = {
-  '1': {
-    source: 'Bloomberg Terminal',
-    time: '12m ago',
-    sentiment: '● Bullish (+84%)',
-    sentimentClass: 'bullish',
-    headline: 'Fed Signals Steady Rate Trajectory as Megacap AI Capex Continues Accelerating',
-    p1: 'Federal Reserve officials signaled a measured and data-dependent monetary policy path, reducing interest rate volatility while enterprise cloud hyperscalers expanded global compute budgets. Institutional trading volume in semiconductor leaders increased 24% above 30-day moving averages.',
-    p2: 'Forward earnings guidance indicates strong capital efficiency, with high-margin AI subscription tiers buffering operating margins across software and platform ecosystems. QuantView momentum indicators show broad multi-quarter upside momentum.',
-    factor: 'Momentum + High Beta Multi-Asset',
-    vol: 'Contraction (Low ATR)',
-    weight: '+14% Bullish Probability',
-    tickers: ['AAPL', 'MSFT', 'NVDA', 'SPY', 'QQQ']
-  },
-  '2': {
-    source: 'Economic Times',
-    time: '28m ago',
-    sentiment: '● Bullish Flow (+91%)',
-    sentimentClass: 'bullish',
-    headline: 'FII Net Inflows Hit 4-Month High in NSE Bluechips; Banking & Energy Lead Accumulation',
-    p1: 'Foreign institutional investors turned strong net purchasers on the National Stock Exchange, accumulating ₹8,420 Cr worth of large-cap equities. Liquidity concentrated heavily in heavyweights HDFC Bank, Reliance Industries, and Tata Consultancy Services.',
-    p2: 'Domestic mutual fund systemic investment plans (SIP) reached new record highs, providing strong institutional bid support and reinforcing positive trend structure on the Nifty 50 and Bank Nifty indices.',
-    factor: 'Institutional Liquidity & Inflow Momentum',
-    vol: 'Normal Regime',
-    weight: '+18% Long Allocation',
-    tickers: ['RELIANCE', 'TCS', 'HDFCBANK', 'NIFTYBEES', 'BANKBEES']
-  },
-  '3': {
-    source: 'QuantView Research',
-    time: '45m ago',
-    sentiment: '● Volatility Regime',
-    sentimentClass: 'neutral',
-    headline: 'ATR Volatility Compression Signals Imminent Directional Expansion in Global Indices',
-    p1: 'Our algorithmic volatility filters show Average True Range (ATR%) contracting to the 4th percentile of 3-year historical distribution. Historically, periods of tight consolidation across S&P 500 and Nifty 50 precede directional expansions of 4-7% within 20 trading sessions.',
-    p2: 'Traders are advised to watch Bollinger band breakout triggers with volume confirmation to align with the higher-probability regime break.',
-    factor: 'Volatility Squeeze & Range Expansion',
-    vol: 'Compression → Imminent Breakout',
-    weight: 'Delta-Neutral to Trend Continuation',
-    tickers: ['SPY', 'QQQ', 'NIFTYBEES']
-  },
-  '4': {
-    source: 'Reuters Finance',
-    time: '1h ago',
-    sentiment: '● High Conviction (+88%)',
-    sentimentClass: 'bullish',
-    headline: 'Semiconductor Order Backlog Reaches Record High as Enterprise LLM Deployment Expands',
-    p1: 'Lead times for AI acceleration silicon remain elevated through early 2027 as enterprise data center modernization transitions from pilot projects to full production deployments. Supply chain checks reveal sustained yield improvements.',
-    p2: 'Operating margins across top semiconductor foundries and design houses continue expanding, validating QuantView fundamental quality scores.',
-    factor: 'Fundamental Earnings Momentum',
-    vol: 'Elevated High-Beta Growth',
-    weight: '+16% Technology Weight',
-    tickers: ['NVDA', 'AMD', 'MSFT']
-  },
-  '5': {
-    source: 'Mint & RBI Desk',
-    time: '2h ago',
-    sentiment: '● Macro Strength (+79%)',
-    sentimentClass: 'bullish',
-    headline: 'India Manufacturing PMI Expands to 58.6; Industrial Capex Cycle Hits Decade High',
-    p1: 'Purchasing Managers Index (PMI) data confirmed robust private capital expenditure across heavy engineering, automotive, and infrastructure sectors. Core industrial credit growth accelerated to 14.2% YoY.',
-    p2: 'Easing input inflation combined with sustained urban consumption creates favorable macroeconomic tailwinds for domestic cyclical leaders.',
-    factor: 'Macro Capex & Industrial GDP',
-    vol: 'Stable Low Volatility',
-    weight: '+10% India Cyclicals',
-    tickers: ['RELIANCE', 'ONGC', 'TATAMOTORS', 'LT']
-  },
-  '6': {
-    source: 'Financial Times',
-    time: '3h ago',
-    sentiment: '● Risk Off Warning (-54%)',
-    sentimentClass: 'bearish',
-    headline: 'Treasury Yield Curve Steepens as Sovereign Debt Issuance Surpasses Expectations',
-    p1: 'Yields on 10-year benchmark government debt moved higher, leading quantitative risk parity algorithms to execute tactical rebalancing into short-duration cash equivalents and gold hedges.',
-    p2: 'Asset managers recommend maintaining strict stop-loss discipline and favoring low-beta, high-dividend defensive equities until rate stability resumes.',
-    factor: 'Sovereign Yield Sensitivity',
-    vol: 'Elevated Fixed Income Vol',
-    weight: '-8% High Duration Growth',
-    tickers: ['GLD', 'GOLDBEES', 'SILVERBEES']
-  },
-  '7': {
-    source: 'CNBC-TV18',
-    time: '4h ago',
-    sentiment: '● Buy Signal (+76%)',
-    sentimentClass: 'bullish',
-    headline: 'IT Services Rebound: Deal Total Contract Value (TCV) Up 14% on Cloud Migration Pipelines',
-    p1: 'Large Indian and multinational technology consulting firms reported improved pipeline conversion and multi-year cloud transformation contract renewals across European and North American financial clients.',
-    p2: 'Staff utilization rates optimized to 86%, driving sequential EBIT margin expansion and triggering positive technical trend reversals.',
-    factor: 'Services TCV & Margin Rebound',
-    vol: 'Normalizing',
-    weight: '+11% IT Services',
-    tickers: ['TCS', 'INFY', 'HCLTECH', 'WIPRO']
-  },
-  '8': {
-    source: 'QuantView Signals',
-    time: '5h ago',
-    sentiment: '● Ensemble Consensus',
-    sentimentClass: 'bullish',
-    headline: 'Ensemble Model Cross-Asset Breadth Indicator Reaches Optimal Trend Alignment',
-    p1: 'QuantView proprietary 20-day walk-forward ensemble models (combining LSTM sequential memory and XGBoost gradient trees) recorded a 78% bullish consensus across 80% of monitored bluechip universe constituents.',
-    p2: 'Breadth indicators show healthy volume confirmation with over 72% of stocks trading above their respective 50-day moving averages.',
-    factor: 'Cross-Asset Algorithmic Breadth',
-    vol: 'Favorable Expansion Regime',
-    weight: '+20% Systematic Exposure',
-    tickers: ['NIFTYBEES', 'BANKBEES', 'SPY']
-  }
-};
+// ── Market News & Intelligence Portal Logic (TSK-01 Live Feed) ─────────────
+let _liveNewsArticles = [];
 
 function initNewsPortal() {
   let activeCategory = 'all';
   let searchQuery = '';
-  let isNewsOnlyMode = false;
-
-  const newsCards = document.querySelectorAll('.news-item-card');
+  const newsContainer = document.getElementById('news-grid-container');
   const catPills = document.querySelectorAll('.news-cat-pill');
   const searchInput = document.getElementById('news-search-input');
   const searchClear = document.getElementById('news-search-clear');
   const noResults = document.getElementById('news-no-results');
   const resetBtn = document.getElementById('btn-reset-news-filter');
   const toggleViewBtn = document.getElementById('btn-toggle-news-view');
-  const toggleText = document.getElementById('news-toggle-text');
-  const navLinkNews = document.getElementById('nav-link-news');
-  const navLinkDash = document.getElementById('nav-link-dash');
+  const modalOverlay = document.getElementById('news-modal-overlay');
+  const modalClose = document.getElementById('news-modal-close');
 
-  function filterNews() {
+  if (!newsContainer) return;
+
+  function renderSkeleton() {
+    newsContainer.innerHTML = `
+      <div class="news-skeleton-wrap" style="grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+        <div class="skeleton-card glass" style="height: 220px; border-radius: 12px; padding: 16px;">
+          <div class="skeleton-line" style="height: 16px; width: 40%; margin-bottom: 12px;"></div>
+          <div class="skeleton-line" style="height: 22px; width: 90%; margin-bottom: 8px;"></div>
+          <div class="skeleton-line" style="height: 22px; width: 70%; margin-bottom: 16px;"></div>
+          <div class="skeleton-line" style="height: 14px; width: 100%; margin-bottom: 6px;"></div>
+          <div class="skeleton-line" style="height: 14px; width: 85%;"></div>
+        </div>
+        <div class="skeleton-card glass" style="height: 220px; border-radius: 12px; padding: 16px;">
+          <div class="skeleton-line" style="height: 16px; width: 40%; margin-bottom: 12px;"></div>
+          <div class="skeleton-line" style="height: 22px; width: 90%; margin-bottom: 8px;"></div>
+          <div class="skeleton-line" style="height: 22px; width: 70%; margin-bottom: 16px;"></div>
+          <div class="skeleton-line" style="height: 14px; width: 100%; margin-bottom: 6px;"></div>
+          <div class="skeleton-line" style="height: 14px; width: 85%;"></div>
+        </div>
+        <div class="skeleton-card glass" style="height: 220px; border-radius: 12px; padding: 16px;">
+          <div class="skeleton-line" style="height: 16px; width: 40%; margin-bottom: 12px;"></div>
+          <div class="skeleton-line" style="height: 22px; width: 90%; margin-bottom: 8px;"></div>
+          <div class="skeleton-line" style="height: 22px; width: 70%; margin-bottom: 16px;"></div>
+          <div class="skeleton-line" style="height: 14px; width: 100%; margin-bottom: 6px;"></div>
+          <div class="skeleton-line" style="height: 14px; width: 85%;"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderArticles(articles) {
+    newsContainer.innerHTML = '';
+    if (!articles || articles.length === 0) {
+      if (noResults) noResults.classList.remove('hidden');
+      return;
+    }
+    if (noResults) noResults.classList.add('hidden');
+
+    articles.forEach(item => {
+      const card = document.createElement('article');
+      card.className = 'news-item-card';
+      const catList = Array.isArray(item.category) ? item.category : ['market', 'live'];
+      card.dataset.category = catList.join(' ').toLowerCase();
+      card.dataset.tickers = (item.tickers || []).join(',');
+      card.dataset.id = item.id || '';
+
+      const sent = (item.sentiment || 'neutral').toLowerCase();
+      const sentScore = item.sentimentScore != null ? Math.round(Math.abs(item.sentimentScore) * 100) : 50;
+      let sentLabel = '● Neutral (50%)';
+      if (sent === 'bullish') sentLabel = `● Bullish (+${sentScore}%)`;
+      else if (sent === 'bearish') sentLabel = `● Bearish (-${sentScore}%)`;
+
+      const primaryTag = (item.tickers && item.tickers.length > 0) ? item.tickers[0] : (catList[2] || 'Market Live');
+
+      card.innerHTML = `
+        <div class="news-meta">
+          <span class="news-source">${escapeHtml(item.source || 'Market News')}</span>
+          <span class="news-time">${escapeHtml(item.publishedAt || 'Just now')}</span>
+        </div>
+        <h4 class="news-headline">${escapeHtml(item.headline || 'Market Intelligence Update')}</h4>
+        <p class="news-snippet">${escapeHtml(item.summary || '')}</p>
+        <div class="news-bottom-action-row">
+          <div class="news-badge-wrap">
+            <span class="news-badge-sentiment ${sent}">${sentLabel}</span>
+            <span class="news-tag">${escapeHtml(primaryTag)}</span>
+          </div>
+          <button class="news-read-more-btn" data-news-id="${escapeHtml(item.id)}">Full Story →</button>
+        </div>
+      `;
+
+      // Read more button & card click listeners
+      const btn = card.querySelector('.news-read-more-btn');
+      if (btn) {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openNewsModal(item);
+        });
+      }
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.qp-btn')) return;
+        openNewsModal(item);
+      });
+
+      newsContainer.appendChild(card);
+    });
+
+    applyFilters();
+  }
+
+  function applyFilters() {
+    const cards = newsContainer.querySelectorAll('.news-item-card');
     let visibleCount = 0;
     const query = (searchQuery || '').toLowerCase().trim();
 
-    newsCards.forEach(card => {
+    cards.forEach(card => {
       const cat = (card.dataset.category || '').toLowerCase();
       const headline = (card.querySelector('.news-headline')?.textContent || '').toLowerCase();
       const snippet = (card.querySelector('.news-snippet')?.textContent || '').toLowerCase();
@@ -2216,7 +2381,7 @@ function initNewsPortal() {
         matchCat = cat.includes(activeCategory);
       }
 
-      // Search match
+      // Search query match
       let matchSearch = true;
       if (query) {
         matchSearch = headline.includes(query) || snippet.includes(query) || tickers.includes(query) || source.includes(query);
@@ -2235,13 +2400,77 @@ function initNewsPortal() {
     }
   }
 
+  function openNewsModal(item) {
+    if (!item || !modalOverlay) return;
+
+    document.getElementById('nm-source').textContent = item.source || 'Market News';
+    document.getElementById('nm-time').textContent = item.publishedAt || 'Live';
+
+    const sent = (item.sentiment || 'neutral').toLowerCase();
+    const sentScore = item.sentimentScore != null ? Math.round(Math.abs(item.sentimentScore) * 100) : 50;
+    let sentLabel = '● Neutral (50%)';
+    if (sent === 'bullish') sentLabel = `● Bullish (+${sentScore}%)`;
+    else if (sent === 'bearish') sentLabel = `● Bearish (-${sentScore}%)`;
+
+    const sentEl = document.getElementById('nm-sentiment');
+    if (sentEl) {
+      sentEl.textContent = sentLabel;
+      sentEl.className = `news-badge-sentiment ${sent}`;
+    }
+
+    const hlEl = document.getElementById('nm-headline');
+    if (hlEl) hlEl.textContent = item.headline || '';
+
+    const p1El = document.getElementById('nm-paragraph1');
+    if (p1El) p1El.textContent = item.summary || '';
+
+    const p2El = document.getElementById('nm-paragraph2');
+    if (p2El) {
+      if (item.url) {
+        p2El.innerHTML = `Full reporting and primary coverage available at <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" style="color: var(--primary); text-decoration: underline;">${escapeHtml(item.source || 'Original Source')} ↗</a>. Quantitative sentiment score: <strong>${(item.sentimentScore || 0.50).toFixed(2)}</strong>.`;
+      } else {
+        p2El.textContent = 'Aggregated real-time market disclosure via QuantView multi-provider ingestion.';
+      }
+    }
+
+    const factorEl = document.getElementById('nm-factor');
+    if (factorEl) factorEl.textContent = (item.category && item.category.length > 0) ? item.category.join(' · ').toUpperCase() : 'MARKET INTELLIGENCE';
+
+    const volEl = document.getElementById('nm-vol');
+    if (volEl) volEl.textContent = 'Live Feed Analysis';
+
+    const weightEl = document.getElementById('nm-weight');
+    if (weightEl) weightEl.textContent = `Sentiment: ${(item.sentimentScore || 0.50).toFixed(2)}`;
+
+    const tickersList = document.getElementById('nm-tickers-list');
+    if (tickersList) {
+      tickersList.innerHTML = '';
+      const tickers = Array.isArray(item.tickers) && item.tickers.length > 0 ? item.tickers : ['SPY'];
+      tickers.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'nm-ticker-btn qp-btn';
+        btn.dataset.ticker = t;
+        btn.innerHTML = `<span>${escapeHtml(t)}</span> · Analyze →`;
+        btn.onclick = () => {
+          modalOverlay.classList.add('hidden');
+          setNewsOnlyMode(false);
+          if (tickerInput) tickerInput.value = t;
+          analyze(t);
+        };
+        tickersList.appendChild(btn);
+      });
+    }
+
+    modalOverlay.classList.remove('hidden');
+  }
+
   // Category pill clicks
   catPills.forEach(pill => {
     pill.addEventListener('click', () => {
       catPills.forEach(p => p.classList.remove('active'));
       pill.classList.add('active');
       activeCategory = pill.dataset.cat || 'all';
-      filterNews();
+      applyFilters();
     });
   });
 
@@ -2252,7 +2481,7 @@ function initNewsPortal() {
       if (searchClear) {
         searchClear.classList.toggle('hidden', !searchQuery);
       }
-      filterNews();
+      applyFilters();
     });
   }
 
@@ -2261,7 +2490,7 @@ function initNewsPortal() {
       searchInput.value = '';
       searchQuery = '';
       searchClear.classList.add('hidden');
-      filterNews();
+      applyFilters();
     });
   }
 
@@ -2272,7 +2501,7 @@ function initNewsPortal() {
       if (searchInput) searchInput.value = '';
       if (searchClear) searchClear.classList.add('hidden');
       catPills.forEach(p => p.classList.toggle('active', p.dataset.cat === 'all'));
-      filterNews();
+      applyFilters();
     });
   }
 
@@ -2281,68 +2510,6 @@ function initNewsPortal() {
       setNewsOnlyMode(!_isNewsOnlyMode);
     });
   }
-
-  // Full Story Modal
-  const modalOverlay = document.getElementById('news-modal-overlay');
-  const modalClose = document.getElementById('news-modal-close');
-
-  function openNewsModal(newsId) {
-    const data = NEWS_STORIES_DATA[newsId];
-    if (!data || !modalOverlay) return;
-
-    document.getElementById('nm-source').textContent = data.source;
-    document.getElementById('nm-time').textContent = data.time;
-    
-    const sentEl = document.getElementById('nm-sentiment');
-    sentEl.textContent = data.sentiment;
-    sentEl.className = `news-badge-sentiment ${data.sentimentClass}`;
-
-    document.getElementById('nm-headline').textContent = data.headline;
-    document.getElementById('nm-paragraph1').textContent = data.p1;
-    document.getElementById('nm-paragraph2').textContent = data.p2;
-
-    document.getElementById('nm-factor').textContent = data.factor;
-    document.getElementById('nm-vol').textContent = data.vol;
-    document.getElementById('nm-weight').textContent = data.weight;
-
-    const tickersList = document.getElementById('nm-tickers-list');
-    if (tickersList) {
-      tickersList.innerHTML = '';
-      data.tickers.forEach(t => {
-        const btn = document.createElement('button');
-        btn.className = 'nm-ticker-btn qp-btn';
-        btn.dataset.ticker = t;
-        btn.innerHTML = `<span>${t}</span> · Analyze →`;
-        btn.onclick = () => {
-          modalOverlay.classList.add('hidden');
-          setNewsOnlyMode(false);
-          tickerInput.value = t;
-          analyze(t);
-        };
-        tickersList.appendChild(btn);
-      });
-    }
-
-    modalOverlay.classList.remove('hidden');
-  }
-
-  // Attach click listeners for "Full Story →" buttons
-  document.querySelectorAll('.news-read-more-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const newsId = btn.dataset.newsId;
-      if (newsId) openNewsModal(newsId);
-    });
-  });
-
-  // Clicking anywhere on card also opens modal
-  newsCards.forEach(card => {
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('.qp-btn')) return;
-      const newsId = card.querySelector('.news-read-more-btn')?.dataset.newsId;
-      if (newsId) openNewsModal(newsId);
-    });
-  });
 
   if (modalClose) {
     modalClose.addEventListener('click', () => {
@@ -2353,6 +2520,18 @@ function initNewsPortal() {
   if (modalOverlay) {
     modalOverlay.addEventListener('click', (e) => {
       if (e.target === modalOverlay) modalOverlay.classList.add('hidden');
+    });
+  }
+
+  // Kick off loading & fetch from MarketauxService
+  renderSkeleton();
+  if (window.MarketauxService) {
+    window.MarketauxService.fetchNews().then(articles => {
+      _liveNewsArticles = articles || [];
+      renderArticles(_liveNewsArticles);
+    }).catch(err => {
+      console.warn('[NewsPortal] Error rendering live news:', err);
+      renderArticles([]);
     });
   }
 }
@@ -2378,6 +2557,9 @@ async function renderLiveWatchlist(showSkeleton = false) {
     lastUpdatedEl.textContent = 'Last Updated: ' + window.WatchlistService.getLastUpdated();
   }
 
+  // Update top market overview ribbon with authentic live index/proxy quotes
+  updateMarketRibbon(items);
+
   // Trigger real notification for significant intraday price swings (>= 2.5%)
   if (items && Array.isArray(items) && window.NotificationService) {
     items.forEach(it => {
@@ -2395,15 +2577,27 @@ async function renderLiveWatchlist(showSkeleton = false) {
 
   tbody.innerHTML = '';
 
-  items.slice(0, 10).forEach(item => {
+  if (window.LiveQuoteService && Array.isArray(items)) {
+    window.LiveQuoteService.ingestQuotesBatch(items);
+  }
+
+  const equitiesOnly = items.filter(it => !['NIFTY 50', 'SENSEX', 'S&P 500', 'NASDAQ 100', '^NSEI', '^BSESN', '^GSPC', '^NDX'].includes(it.ticker));
+
+  equitiesOnly.slice(0, 10).forEach(item => {
+    const rawSym = item.symbol || item.ticker;
+    const q = window.LiveQuoteService ? window.LiveQuoteService.getQuote(rawSym) : null;
+
     const tr = document.createElement('tr');
     tr.className = 'wl-row';
-    tr.dataset.ticker = item.ticker;
+    tr.dataset.ticker = rawSym;
 
-    const isIndia = item.exchange === 'NSE' || item.exchange === 'BSE' || item.ticker.includes('.NS') || ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'ITC', 'BHARTIARTL', 'NIFTYBEES', 'BANKBEES', 'GOLDBEES'].includes(item.ticker);
-    const isEtf = item.ticker.includes('BEES') || ['SPY', 'QQQ', 'VOO', 'VTI'].includes(item.ticker);
-    const logoSvgUri = window.LogoService ? window.LogoService.getLogo(item.ticker, isIndia, isEtf) : '';
-    const compName = window.LogoService ? window.LogoService.getCompanyName(item.ticker, item.name) : item.name;
+    const isIndia = item.exchange === 'NSE' || item.exchange === 'BSE' || rawSym.includes('.NS') || ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'ITC', 'BHARTIARTL', 'NIFTYBEES', 'BANKBEES', 'GOLDBEES'].includes(rawSym);
+    const isEtf = rawSym.includes('BEES') || ['SPY', 'QQQ', 'VOO', 'VTI'].includes(rawSym);
+    const logoSvgUri = window.LogoService ? window.LogoService.getLogo(rawSym, isIndia, isEtf) : '';
+    const compName = window.LogoService ? window.LogoService.getCompanyName(rawSym, item.name) : item.name;
+
+    const priceText = q ? window.LiveQuoteService.formatPrice(q.price, q.currencySymbol) : (item.price || '—');
+    const chgInfo = q ? window.LiveQuoteService.formatChange(q.change, q.changePercent, q.currencySymbol) : { percentText: item.change || '+0.00%', cssClass: item.changePos !== false ? 'pos' : 'neg' };
 
     tr.innerHTML = `
       <td>
@@ -2418,10 +2612,10 @@ async function renderLiveWatchlist(showSkeleton = false) {
         </div>
       </td>
       <td><span class="wl-exch">${item.exchange || 'NSE'}</span></td>
-      <td class="wl-num">${item.price || '—'}</td>
-      <td><span class="wl-change ${item.changePos !== false ? 'pos' : 'neg'}">${item.change || '+0.00%'}</span></td>
+      <td class="wl-num">${priceText}</td>
+      <td><span class="wl-change ${chgInfo.cssClass}">${chgInfo.percentText}</span></td>
       <td>
-        <button class="wl-action-btn qp-btn" data-ticker="${item.ticker}">Analyze →</button>
+        <button class="wl-action-btn qp-btn" data-ticker="${rawSym}">Analyze →</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -2442,10 +2636,20 @@ function initSearchAutocomplete() {
 
   let activeIndex = -1;
 
-  function renderResults(results) {
+  function renderResults(results, queryStr = '') {
     resultsContainer.innerHTML = '';
     if (!results || results.length === 0) {
-      dropdown.classList.add('hidden');
+      if (queryStr && queryStr.length > 0) {
+        resultsContainer.innerHTML = `
+          <div class="search-auto-empty-hint" style="padding: 14px 16px; color: var(--text-muted); font-size: 0.84rem; line-height: 1.5;">
+            <span style="color: var(--text-primary); font-weight: 600;">No instant suggestions for "${escapeHtml(queryStr)}"</span><br/>
+            Press <kbd style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; color: var(--primary);">Enter</kbd> to analyze any valid Indian or US ticker via live quantitative pipeline.
+          </div>
+        `;
+        dropdown.classList.remove('hidden');
+      } else {
+        dropdown.classList.add('hidden');
+      }
       return;
     }
 
@@ -2453,6 +2657,8 @@ function initSearchAutocomplete() {
       const row = document.createElement('div');
       row.className = 'search-auto-row';
       row.dataset.ticker = item.ticker;
+      row.setAttribute('role', 'button');
+      row.setAttribute('tabindex', '0');
 
       const isIndia = item.country === 'India';
       const isEtf = item.type === 'ETF';
@@ -2460,20 +2666,28 @@ function initSearchAutocomplete() {
 
       row.innerHTML = `
         <div class="sa-left">
-          <div class="sa-logo-wrap"><img src="${logoSvgUri}" class="sa-logo-img" alt="" /></div>
+          <div class="sa-logo-wrap"><img src="${escapeHtml(logoSvgUri)}" class="sa-logo-img" alt="" /></div>
           <div>
-            <div class="sa-title"><strong>${item.ticker}</strong> <span class="sa-name">${item.name}</span></div>
-            <div class="sa-sub">${item.country === 'India' ? '🇮🇳 India' : '🇺🇸 United States'} · ${item.exchange} · <span class="sa-type-badge">${item.type}</span></div>
+            <div class="sa-title"><strong>${escapeHtml(item.ticker)}</strong> <span class="sa-name">${escapeHtml(item.name)}</span></div>
+            <div class="sa-sub">${isIndia ? '🇮🇳 India' : '🇺🇸 United States'} · ${escapeHtml(item.exchange)} · <span class="sa-type-badge">${escapeHtml(item.type)}</span></div>
           </div>
         </div>
         <div class="sa-right"><span class="sa-arrow">→</span></div>
       `;
 
-      row.onclick = () => {
+      const triggerSelect = () => {
         input.value = item.ticker;
         dropdown.classList.add('hidden');
         if (window.SearchService) window.SearchService.addRecentSearch(item.ticker);
         analyze(item.ticker);
+      };
+
+      row.onclick = triggerSelect;
+      row.onkeydown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          triggerSelect();
+        }
       };
 
       resultsContainer.appendChild(row);
@@ -2491,7 +2705,7 @@ function initSearchAutocomplete() {
     }
     if (window.SearchService) {
       const matches = window.SearchService.search(q);
-      renderResults(matches);
+      renderResults(matches, q);
     }
   });
 
@@ -2666,7 +2880,8 @@ function initNotificationCenter() {
 }
 
 // ── Settings & Preferences Storage Manager ──────────────────────────────────
-const DEFAULT_SETTINGS = {
+const SETTINGS_KEY = 'qv_platform_settings';
+const DEFAULT_SETTINGS = Object.freeze({
   currency: 'auto',
   horizon: '20',
   capital: 100000,
@@ -2674,28 +2889,28 @@ const DEFAULT_SETTINGS = {
   slippage: 0.05,
   marketaux_key: '',
   finnhub_key: '',
-  live_pulse: true
-};
+  live_pulse: true,
+});
 
 function getPlatformSettings() {
   try {
-    const raw = localStorage.getItem('qv_platform_settings');
-    if (raw) return Object.assign({}, DEFAULT_SETTINGS, JSON.parse(raw));
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
   } catch (e) {
     console.warn('Error reading settings from localStorage:', e);
   }
-  return Object.assign({}, DEFAULT_SETTINGS);
+  return { ...DEFAULT_SETTINGS };
 }
 
 function savePlatformSettings(newSettings) {
   try {
-    const merged = Object.assign({}, getPlatformSettings(), newSettings);
-    localStorage.setItem('qv_platform_settings', JSON.stringify(merged));
+    const merged = { ...getPlatformSettings(), ...(newSettings || {}) };
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
     window.dispatchEvent(new CustomEvent('qv:settings-updated', { detail: merged }));
     return merged;
   } catch (e) {
     console.error('Error saving settings to localStorage:', e);
-    return null;
+    return { ...DEFAULT_SETTINGS, ...(newSettings || {}) };
   }
 }
 
@@ -2760,6 +2975,15 @@ function initSidebarNavigation() {
       if (window.innerWidth <= 1024) {
         toggleMobileSidebar();
       } else {
+        toggleDesktopCollapse();
+      }
+    });
+  }
+
+  const sidebarBrand = document.querySelector('.sidebar-brand');
+  if (sidebarBrand) {
+    sidebarBrand.addEventListener('click', (e) => {
+      if (sidebarEl && sidebarEl.classList.contains('collapsed') && window.innerWidth > 1024) {
         toggleDesktopCollapse();
       }
     });
@@ -2875,7 +3099,12 @@ function applyPlatformSettings(settings = null) {
     document.body.classList.remove('disable-live-pulses');
   }
 
-  // 2. Immediate re-render of active stock results if loaded
+  // 2. Refresh live watchlist to update currency formatting
+  if (typeof renderLiveWatchlist === 'function') {
+    renderLiveWatchlist();
+  }
+
+  // 3. Immediate re-render of active stock results if loaded
   if (window._qvLastData) {
     const data = window._qvLastData;
     const sym = getEffectiveCurrency(data.market?.currency_symbol || (data.market?.is_india ? '₹' : '$'));
@@ -3016,11 +3245,14 @@ async function updateMarketStatusPills() {
     }
   }
 
-  // 1. Instant hydration from cached state to avoid any layout flicker
+  // 1. Instant hydration only from fresh cached state (<= 60s)
   try {
-    const cached = localStorage.getItem('QV_MARKET_STATE');
-    if (cached) {
-      applyStatus(JSON.parse(cached));
+    const raw = localStorage.getItem('QV_MARKET_STATE');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.timestamp && (Date.now() / 1000 - parsed.timestamp < 60)) {
+        applyStatus(parsed);
+      }
     }
   } catch (e) {}
 
