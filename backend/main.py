@@ -685,10 +685,10 @@ def get_recommendation(
         log.exception("[%s] Prediction failed", resolved)
         raise HTTPException(status_code=500, detail=f"Prediction error: {exc}")
 
-    # Build historical price points for interactive Groww-style charting
+    # Build historical price points for interactive Groww-style charting (full lifetime series)
     price_history: List[PriceHistoryPoint] = []
     if "Close" in entry.df.columns:
-        df_chart = entry.df.tail(500)
+        df_chart = entry.df
         for idx, row in df_chart.iterrows():
             d_str = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
             price_history.append(

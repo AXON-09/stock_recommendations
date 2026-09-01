@@ -1736,6 +1736,8 @@ function filterPriceHistory(tf) {
   else if (tf === '3M') count = Math.min(n, 66);
   else if (tf === '6M') count = Math.min(n, 132);
   else if (tf === '1Y') count = Math.min(n, 252);
+  else if (tf === '3Y') count = Math.min(n, 756);
+  else if (tf === '5Y') count = Math.min(n, 1260);
   else if (tf === 'ALL') count = n;
   return _priceHistory.slice(n - count);
 }
