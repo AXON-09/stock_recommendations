@@ -202,6 +202,86 @@ class YahooQuoteProvider(BaseQuoteProvider):
 
 
 # ---------------------------------------------------------------------------
+# Twelve Data Provider Implementation
+# ---------------------------------------------------------------------------
+class TwelveDataQuoteProvider(BaseQuoteProvider):
+    """Ingests live quote data using Twelve Data API with resilient fallback."""
+
+    def fetch_quote(self, ticker: str) -> Optional[LiveQuoteModel]:
+        try:
+            try:
+                from backend.twelvedata import get_twelve_data_api_key, _resolve_twelve_data_params, _call_twelve_data
+            except ImportError:
+                from twelvedata import get_twelve_data_api_key, _resolve_twelve_data_params, _call_twelve_data
+
+            api_key = get_twelve_data_api_key()
+            if not api_key:
+                return None
+
+            t_clean = ticker.strip().upper()
+            mkt = get_market_info(t_clean, {})
+            symbol, exchange_name, curr_sym = _resolve_twelve_data_params(t_clean, mkt.is_india)
+
+            params = {"symbol": symbol}
+            if exchange_name:
+                params["exchange"] = exchange_name
+
+            raw = _call_twelve_data("quote", params, api_key)
+            if not raw or not isinstance(raw, dict):
+                return None
+
+            # Parse numeric fields
+            raw_close = raw.get("close") or raw.get("price") or raw.get("previous_close")
+            if not raw_close:
+                return None
+
+            price = float(raw_close)
+            if not np.isfinite(price) or price <= 0:
+                return None
+
+            prev_close_val = raw.get("previous_close")
+            prev_close = float(prev_close_val) if prev_close_val and np.isfinite(float(prev_close_val)) else price
+
+            change_val = raw.get("change")
+            change = float(change_val) if change_val and np.isfinite(float(change_val)) else round(price - prev_close, 2)
+
+            pct_val = raw.get("percent_change")
+            change_pct = float(pct_val) if pct_val and np.isfinite(float(pct_val)) else (round((change / prev_close) * 100, 2) if prev_close > 0 else 0.0)
+
+            is_open = bool(raw.get("is_market_open", False))
+            market_state = "REGULAR" if is_open else "CLOSED"
+
+            display_name = raw.get("name") or t_clean
+            asset_type = "INDEX" if t_clean.startswith("^") else ("ETF" if mkt.is_etf else "EQUITY")
+            iana_tz = "Asia/Kolkata" if mkt.is_india else "America/New_York"
+            exchange_tz = "IST" if mkt.is_india else "EST"
+
+            return LiveQuoteModel(
+                ticker=t_clean,
+                display_name=display_name,
+                asset_type=asset_type,
+                exchange=raw.get("exchange") or mkt.exchange or "UNKNOWN",
+                currency=raw.get("currency") or mkt.currency or "USD",
+                currency_symbol=curr_sym or mkt.currency_symbol or "$",
+                timezone=iana_tz,
+                exchange_timezone=exchange_tz,
+                price=round(price, 2),
+                previous_close=round(prev_close, 2),
+                change=round(change, 2),
+                change_percent=round(change_pct, 2),
+                market_state=market_state,
+                is_market_open=is_open,
+                delay_status="REAL_TIME" if is_open else "END_OF_DAY",
+                quote_source="TWELVE_DATA_PROVIDER",
+                quote_freshness="LIVE" if is_open else "PREVIOUS_CLOSE",
+                last_updated=datetime.now(timezone.utc).isoformat(),
+            )
+        except Exception as exc:
+            log.debug("[%s] TwelveDataQuoteProvider lookup failed: %s", ticker, exc)
+            return None
+
+
+# ---------------------------------------------------------------------------
 # Composite Provider with Multi-Tier Resilient Fallback
 # ---------------------------------------------------------------------------
 class CompositeQuoteProvider:
@@ -210,6 +290,7 @@ class CompositeQuoteProvider:
     def __init__(self, providers: Optional[List[BaseQuoteProvider]] = None):
         self._providers: List[BaseQuoteProvider] = providers if providers is not None else [
             YahooQuoteProvider(),
+            TwelveDataQuoteProvider(),
         ]
         self._cache: Dict[str, Tuple[float, LiveQuoteModel]] = {}
         self._cache_ttl = 15.0  # 15 seconds short-TTL for high performance

@@ -2794,7 +2794,12 @@ async function renderLiveWatchlist(showSkeleton = false) {
     const compName = window.LogoService ? window.LogoService.getCompanyName(rawSym, item.name) : item.name;
 
     const priceText = q ? window.LiveQuoteService.formatPrice(q.price, q.currencySymbol) : (item.price || '—');
-    const chgInfo = q ? window.LiveQuoteService.formatChange(q.change, q.changePercent, q.currencySymbol) : { percentText: item.change || '+0.00%', cssClass: item.changePos !== false ? 'pos' : 'neg' };
+    const chgInfo = q 
+      ? window.LiveQuoteService.formatChange(q.change, q.changePercent, q.currencySymbol) 
+      : { 
+          percentText: item.change || '—', 
+          cssClass: item.changePos === true ? 'pos' : (item.changePos === false ? 'neg' : 'neutral') 
+        };
 
     tr.innerHTML = `
       <td>

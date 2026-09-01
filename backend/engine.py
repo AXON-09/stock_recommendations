@@ -571,6 +571,53 @@ def volatility_adjusted_rsi_thresholds(
 
 
 # ---------------------------------------------------------------------------
+# Multi-Scale Trend-Cycle Decomposition (Isolated Feature Block)
+# ---------------------------------------------------------------------------
+def compute_trend_cycle_features(df: pd.DataFrame, trend_window: int = 50, cycle_window: int = 20) -> Dict[str, Any]:
+    """
+    Extract structural Trend, Cyclical Momentum, and Residual Noise components
+    from time series price data without lookahead bias.
+
+    - trend_strength: (Price / SMA_Trend - 1.0) * 100
+    - cycle_oscillator: (Price / EMA_Cycle - 1.0) * 100
+    - residual_noise_ratio: Ratio of high-frequency variance to overall variance (0.0 - 1.0)
+    """
+    if df is None or len(df) < trend_window:
+        return {
+            "trend_strength": 0.0,
+            "cycle_oscillator": 0.0,
+            "residual_noise_ratio": 0.50,
+            "trend_series": None,
+            "cycle_series": None,
+        }
+
+    close = df["Close"].astype(float)
+    trend_series = close.rolling(trend_window, min_periods=trend_window // 2).mean()
+    cycle_ref = close.ewm(span=cycle_window, adjust=False).mean()
+
+    trend_strength_series = ((close - trend_series) / trend_series.replace(0, np.nan)) * 100.0
+    cycle_osc_series = ((close - cycle_ref) / cycle_ref.replace(0, np.nan)) * 100.0
+
+    returns = close.pct_change()
+    detrended_returns = returns - returns.rolling(20, min_periods=5).mean()
+    hf_var = detrended_returns.tail(60).var()
+    tot_var = returns.tail(60).var()
+    noise_ratio = float(hf_var / tot_var) if tot_var > 0 and np.isfinite(hf_var / tot_var) else 0.50
+    noise_ratio = float(np.clip(noise_ratio, 0.0, 1.0))
+
+    last_trend = float(trend_strength_series.iloc[-1]) if pd.notna(trend_strength_series.iloc[-1]) else 0.0
+    last_cycle = float(cycle_osc_series.iloc[-1]) if pd.notna(cycle_osc_series.iloc[-1]) else 0.0
+
+    return {
+        "trend_strength": round(last_trend, 2),
+        "cycle_oscillator": round(last_cycle, 2),
+        "residual_noise_ratio": round(noise_ratio, 3),
+        "trend_series": trend_strength_series,
+        "cycle_series": cycle_osc_series,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Feature extraction — current snapshot
 # ---------------------------------------------------------------------------
 def extract_features(ticker: str) -> AssetFeatures:

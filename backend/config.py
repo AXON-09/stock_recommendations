@@ -137,10 +137,13 @@ MIN_TRAINING_ROWS: int = 300
 """Minimum number of rows (after indicator warm-up) needed to train."""
 
 # ---------------------------------------------------------------------------
-# Caching
+# Caching & Model Schema Invalidation
 # ---------------------------------------------------------------------------
 CACHE_TTL_HOURS: float = 4.0
 """Cached models older than this are considered stale."""
+
+MODEL_SCHEMA_VERSION: str = "v3.1.0"
+"""Schema version tag for cached model dimensions and feature matrix compatibility."""
 
 # ---------------------------------------------------------------------------
 # US sector ETF mapping for peer P/E comparison (US markets only)

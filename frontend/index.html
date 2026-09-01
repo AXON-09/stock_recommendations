@@ -174,7 +174,7 @@
 
       <!-- Market Overview Ticker Ribbon (Benchmark Indices) -->
       <section class="market-ribbon-grid" id="market-ribbon-section">
-        <div class="market-chip glass" id="chip-nifty" data-ticker="^NSEI" role="button" tabindex="0" onclick="triggerMarketChip('^NSEI')" title="Click to analyze NIFTY 50 Benchmark Index">
+        <div class="market-chip glass" id="chip-nifty" data-ticker="^NSEI" role="button" tabindex="0" title="Click to analyze NIFTY 50 Benchmark Index">
           <div class="chip-top">
             <span class="chip-name">NIFTY 50</span>
             <span class="chip-flag">🇮🇳</span>
@@ -185,7 +185,7 @@
           </div>
           <svg class="chip-sparkline" viewBox="0 0 100 24"><path d="M0,18 Q20,15 40,20 T70,8 T100,4" fill="none" stroke="#22c55e" stroke-width="2"></path></svg>
         </div>
-        <div class="market-chip glass" id="chip-sensex" data-ticker="^BSESN" role="button" tabindex="0" onclick="triggerMarketChip('^BSESN')" title="Click to analyze BSE SENSEX Benchmark Index">
+        <div class="market-chip glass" id="chip-sensex" data-ticker="^BSESN" role="button" tabindex="0" title="Click to analyze BSE SENSEX Benchmark Index">
           <div class="chip-top">
             <span class="chip-name">SENSEX</span>
             <span class="chip-flag">🇮🇳</span>
@@ -196,7 +196,7 @@
           </div>
           <svg class="chip-sparkline" viewBox="0 0 100 24"><path d="M0,16 Q25,18 50,12 T80,6 T100,5" fill="none" stroke="#22c55e" stroke-width="2"></path></svg>
         </div>
-        <div class="market-chip glass" id="chip-sp500" data-ticker="^GSPC" role="button" tabindex="0" onclick="triggerMarketChip('^GSPC')" title="Click to analyze S&P 500 Benchmark Index">
+        <div class="market-chip glass" id="chip-sp500" data-ticker="^GSPC" role="button" tabindex="0" title="Click to analyze S&P 500 Benchmark Index">
           <div class="chip-top">
             <span class="chip-name">S&amp;P 500</span>
             <span class="chip-flag">🇺🇸</span>
@@ -207,7 +207,7 @@
           </div>
           <svg class="chip-sparkline" viewBox="0 0 100 24"><path d="M0,19 Q30,14 60,16 T100,6" fill="none" stroke="#22c55e" stroke-width="2"></path></svg>
         </div>
-        <div class="market-chip glass" id="chip-nasdaq" data-ticker="^NDX" role="button" tabindex="0" onclick="triggerMarketChip('^NDX')" title="Click to analyze NASDAQ 100 Benchmark Index">
+        <div class="market-chip glass" id="chip-nasdaq" data-ticker="^NDX" role="button" tabindex="0" title="Click to analyze NASDAQ 100 Benchmark Index">
           <div class="chip-top">
             <span class="chip-name">NASDAQ 100</span>
             <span class="chip-flag">🇺🇸</span>
@@ -1287,19 +1287,6 @@
 
   </div>
 </div>
-
-<script>
-function triggerMarketChip(ticker) {
-  if (window.navigateToAsset) {
-    window.navigateToAsset(ticker);
-  } else {
-    const inp = document.getElementById('ticker-input');
-    if (inp) inp.value = ticker;
-    const btn = document.getElementById('analyze-btn');
-    if (btn) btn.click();
-  }
-}
-</script>
 <script src="glossary.js?v=5"></script>
 <script src="infobox.js?v=5"></script>
 <script src="logos.js?v=5"></script>

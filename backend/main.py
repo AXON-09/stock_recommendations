@@ -130,13 +130,14 @@ def _check_rate_limit(client_ip: str) -> bool:
 # In-memory LRU Cache with Thread-Safe Eviction Cap {resolved_ticker → CacheEntry}
 # ---------------------------------------------------------------------------
 class CacheEntry:
-    def __init__(self, model: StockRecommender, X: pd.DataFrame, df: pd.DataFrame, info: Optional[dict] = None, X_full: Optional[pd.DataFrame] = None):
-        self.model    = model
-        self.X        = X       # feature matrix (training set)
-        self.df       = df      # full DataFrame
-        self.X_full   = X_full if X_full is not None else getattr(df, "attrs", {}).get("X_full", X)  # un-truncated feature matrix up to bar T
-        self.info     = info or {}
-        self.created  = datetime.now(timezone.utc)
+    def __init__(self, model: StockRecommender, X: pd.DataFrame, df: pd.DataFrame, info: Optional[dict] = None, X_full: Optional[pd.DataFrame] = None, schema_version: Optional[str] = None):
+        self.model          = model
+        self.X              = X       # feature matrix (training set)
+        self.df             = df      # full DataFrame
+        self.X_full         = X_full if X_full is not None else getattr(df, "attrs", {}).get("X_full", X)  # un-truncated feature matrix up to bar T
+        self.info           = info or {}
+        self.schema_version = schema_version or getattr(cfg, "MODEL_SCHEMA_VERSION", "v3.1.0")
+        self.created        = datetime.now(timezone.utc)
 
     @property
     def age_hours(self) -> float:
@@ -144,14 +145,17 @@ class CacheEntry:
 
     @property
     def is_stale(self) -> bool:
+        if self.schema_version != getattr(cfg, "MODEL_SCHEMA_VERSION", "v3.1.0"):
+            return True
         return self.age_hours > cfg.CACHE_TTL_HOURS
 
     def to_meta(self) -> dict:
         return {
-            "trained_at":   self.model.trained_at.isoformat() if self.model.trained_at else None,
-            "data_through": self.df.index[-1].strftime("%Y-%m-%d") if hasattr(self.df.index[-1], "strftime") else str(self.df.index[-1]),
-            "age_hours":    round(self.age_hours, 2),
-            "is_stale":     self.is_stale,
+            "trained_at":     self.model.trained_at.isoformat() if self.model.trained_at else None,
+            "data_through":   self.df.index[-1].strftime("%Y-%m-%d") if hasattr(self.df.index[-1], "strftime") else str(self.df.index[-1]),
+            "age_hours":      round(self.age_hours, 2),
+            "is_stale":       self.is_stale,
+            "schema_version": self.schema_version,
         }
 
 
@@ -479,6 +483,7 @@ class RecommendationResponse(BaseModel):
     price_history:    List[PriceHistoryPoint] = Field(default_factory=list, description="Historical price points for Groww-style interactive chart")
     live_quote:       Optional[LiveQuoteModel] = Field(None, description="Normalized live market quote from unified provider")
     institutional_intelligence: Optional[InstitutionalIntelligenceModel] = Field(None, description="6-card institutional & fundamental intelligence")
+    search_attention: Optional[Dict[str, Any]] = Field(None, description="Informational search attention and velocity telemetry")
     ticker_news:      List[TickerNewsStoryModel] = Field(default_factory=list, description="Live ticker-specific news stories")
     press_releases:   List[TickerNewsStoryModel] = Field(default_factory=list, description="Official corporate press releases and disclosures")
     disclaimer:       str
@@ -801,6 +806,16 @@ def get_recommendation(
 
     live_q = quote_provider.get_quote(resolved)
 
+    search_attention_data = None
+    try:
+        try:
+            from backend.services.trends_service import get_search_attention
+        except ImportError:
+            from services.trends_service import get_search_attention
+        search_attention_data = get_search_attention(resolved)
+    except Exception as exc:
+        log.debug("[%s] search_attention lookup skipped: %s", resolved, exc)
+
     return RecommendationResponse(
         ticker=resolved,
         display_ticker=features.display_ticker,
@@ -916,6 +931,7 @@ def get_recommendation(
         ),
         price_history=price_history,
         institutional_intelligence=inst_model,
+        search_attention=search_attention_data,
         ticker_news=ticker_news_list,
         press_releases=press_releases_list,
         disclaimer=_DISCLAIMER,
@@ -1129,12 +1145,13 @@ def fetch_live_watchlist_quotes() -> List[Dict[str, Any]]:
                     "name": a["name"],
                     "exchange": a["exchange"],
                     "price": f"{a['sym']}—",
-                    "change": "+0.00%",
-                    "changePos": True,
-                    "rawPrice": 100.0,
-                    "rawChange": 0.0,
-                    "rawChangePct": 0.0,
-                    "volumeRatio": "1.00x",
+                    "change": "—",
+                    "changePos": None,
+                    "status": "unavailable",
+                    "rawPrice": None,
+                    "rawChange": None,
+                    "rawChangePct": None,
+                    "volumeRatio": "—",
                     "aiRating": "Hold",
                     "isMarketOpen": False,
                     "marketState": "UNKNOWN",
