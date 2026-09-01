@@ -11,7 +11,7 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=10" />
   <link rel="shortcut icon" type="image/svg+xml" href="/favicon.svg?v=10" />
   <link rel="apple-touch-icon" href="/favicon.svg?v=10" />
-  <link rel="stylesheet" href="style.css?v=15" />
+  <link rel="stylesheet" href="style.css?v=16" />
 </head>
 
 <body>
@@ -842,13 +842,30 @@
         </div>
 
         <!-- Backtest -->
-        <div class="card glass">
-          <h2 class="card-title">WALK-FORWARD BACKTEST VALIDATION <button class="info-btn" data-info="backtest_section" aria-label="What is Walk-Forward Backtest?">ⓘ</button></h2>
-          <p class="bt-subtitle">T+20 horizon · 20-Day Purge/Embargo prevents look-ahead leakage · Out-of-fold predictions</p>
-          <div id="bt-grid" class="bt-grid"></div>
-          <details class="bt-details">
-            <summary>Advanced Statistical Metrics</summary>
-            <div id="bt-advanced-grid" class="bt-grid bt-advanced"></div>
+        <div class="card glass backtest-card" id="backtest-card">
+          <div class="backtest-header-wrap">
+            <div class="backtest-title-row">
+              <h2 class="card-title">WALK-FORWARD BACKTEST VALIDATION <button class="info-btn" data-info="backtest_section" aria-label="What is Walk-Forward Backtest?">ⓘ</button></h2>
+              <div class="bt-badge-chips">
+                <span class="bt-chip pulse"><span class="pulse-dot"></span> Out-Of-Fold (OOF)</span>
+                <span class="bt-chip">Purged Walk-Forward CV</span>
+                <span class="bt-chip">Zero Look-Ahead Leakage</span>
+              </div>
+            </div>
+            <p class="bt-subtitle" id="bt-subtitle-text">T+20 horizon · 20-Day Purge/Embargo prevents look-ahead leakage · Out-of-fold predictions</p>
+          </div>
+
+          <div id="bt-grid" class="bt-primary-grid"></div>
+
+          <details class="bt-details" id="bt-details-accordion">
+            <summary class="bt-summary-btn">
+              <span class="bt-summary-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="bt-summary-icon"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                Advanced Statistical &amp; Calibration Metrics
+              </span>
+              <span class="bt-summary-hint">Expand 8 Extended Metrics ▾</span>
+            </summary>
+            <div id="bt-advanced-grid" class="bt-advanced-grid"></div>
           </details>
         </div>
 
@@ -1289,7 +1306,7 @@ function triggerMarketChip(ticker) {
 <script src="services/watchlistService.js?v=5"></script>
 <script src="services/notificationService.js?v=5"></script>
 <script src="services/searchService.js?v=13"></script>
-<script src="services/liveQuoteService.js?v=15"></script>
-<script src="app.js?v=15"></script>
+<script src="services/liveQuoteService.js?v=16"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

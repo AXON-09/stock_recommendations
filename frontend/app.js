@@ -1296,39 +1296,189 @@ function renderValuation(data) {
 
 function renderBacktest(data) {
   const bt = data.backtest;
+  if (!bt) return;
 
-  const PRIMARY = [
-    { label: 'Accuracy',  val: pct(bt.accuracy),  info: 'accuracy'  },
-    { label: 'Precision', val: pct(bt.precision), info: 'precision' },
-    { label: 'Recall',    val: pct(bt.recall),    info: 'recall'    },
-    { label: 'F1',        val: pct(bt.f1),         info: 'f1'        },
-  ];
-  const ADVANCED = [
-    { label: 'ROC-AUC',    val: num(bt.roc_auc, 3),      info: 'roc_auc'      },
-    { label: 'Brier Score',val: num(bt.brier_score, 4),  info: 'brier_score'  },
-    { label: 'OOF Samples',val: bt.oof_samples ?? 'N/A', info: 'oof_samples'  },
-    { label: 'Positive',   val: bt.oof_positive_samples ?? 'N/A', info: 'oof_samples' },
-    { label: 'Avg Fwd Ret',val: bt.avg_fwd_return_pct != null ? `${bt.avg_fwd_return_pct.toFixed(2)}%` : 'N/A', info: 't20_horizon' },
-    { label: 'Med Fwd Ret',val: bt.med_fwd_return_pct != null ? `${bt.med_fwd_return_pct.toFixed(2)}%` : 'N/A', info: 't20_horizon' },
-    { label: 'Purge Days', val: bt.purge_period_days ?? 'N/A', info: 'purge_embargo' },
-    { label: 'Horizon',    val: `T+${bt.forecast_horizon_days}d`, info: 't20_horizon' },
-    { label: 'LSTM Stack', val: bt.lstm_used_in_stacking ? 'Yes' : 'No (XGB-only)', info: 'lstm_coefficient' },
-  ];
+  const horizonDays = bt.forecast_horizon_days || 20;
+  const purgeDays = bt.purge_period_days || 20;
 
-  function renderGrid(id, items) {
-    const grid = document.getElementById(id);
-    grid.innerHTML = '';
-    items.forEach(({ label, val, info }) => {
-      const el = document.createElement('div');
-      el.className = 'bt-item';
-      el.innerHTML = `<span class="bt-label">${label} ${info ? `<button class="info-btn" data-info="${info}" aria-label="What is ${label}?">ⓘ</button>` : ''}</span><span class="bt-val">${val}</span>`;
-      grid.appendChild(el);
-    });
-    if (window.QV_initInfoIcons) window.QV_initInfoIcons(grid);
+  // Subtitle update
+  const subEl = document.getElementById('bt-subtitle-text');
+  if (subEl) {
+    subEl.textContent = `T+${horizonDays} horizon · ${purgeDays}-Day Purge/Embargo prevents look-ahead leakage · Out-of-fold predictions`;
   }
 
-  renderGrid('bt-grid', PRIMARY);
-  renderGrid('bt-advanced-grid', ADVANCED);
+  // 1. Primary Classification Cards
+  const PRIMARY = [
+    {
+      label: 'Accuracy',
+      sub: 'Directional Hit Rate',
+      val: pct(bt.accuracy),
+      info: 'accuracy',
+      tag: bt.accuracy >= 0.52 ? 'Alpha Positive' : (bt.accuracy >= 0.50 ? 'Baseline' : 'Sub-Optimal'),
+      tagClass: bt.accuracy >= 0.52 ? 'pos' : (bt.accuracy >= 0.50 ? 'neutral' : 'neg'),
+      desc: 'vs. 50% Random Walk',
+      pctNum: Math.min(100, Math.max(0, (bt.accuracy || 0) * 100)),
+    },
+    {
+      label: 'Precision',
+      sub: 'Positive Predictive Value',
+      val: pct(bt.precision),
+      info: 'precision',
+      tag: bt.precision >= 0.55 ? 'High Quality' : (bt.precision >= 0.50 ? 'Standard' : 'Moderate'),
+      tagClass: bt.precision >= 0.50 ? 'pos' : 'neutral',
+      desc: 'Long Signal Fidelity',
+      pctNum: Math.min(100, Math.max(0, (bt.precision || 0) * 100)),
+    },
+    {
+      label: 'Recall',
+      sub: 'True Positive Rate',
+      val: pct(bt.recall),
+      info: 'recall',
+      tag: 'Selective Longs',
+      tagClass: 'low',
+      desc: 'Opportunity Capture',
+      pctNum: Math.min(100, Math.max(0, (bt.recall || 0) * 100)),
+    },
+    {
+      label: 'F1 Score',
+      sub: 'Harmonic Balance',
+      val: pct(bt.f1),
+      info: 'f1',
+      tag: 'P & R Balance',
+      tagClass: 'baseline',
+      desc: 'Model Robustness',
+      pctNum: Math.min(100, Math.max(0, (bt.f1 || 0) * 100)),
+    },
+  ];
+
+  const pGrid = document.getElementById('bt-grid');
+  if (pGrid) {
+    pGrid.innerHTML = '';
+    PRIMARY.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'bt-primary-card glass';
+      card.innerHTML = `
+        <div class="bt-card-top">
+          <div class="bt-label-wrap">
+            <span class="bt-label">${escapeHtml(item.label)}</span>
+            <span class="bt-sub">${escapeHtml(item.sub)}</span>
+          </div>
+          <div class="bt-top-right">
+            ${item.info ? `<button class="info-btn" data-info="${item.info}" aria-label="What is ${item.label}?">ⓘ</button>` : ''}
+            <span class="sc-tag ${item.tagClass}">${escapeHtml(item.tag)}</span>
+          </div>
+        </div>
+        <div class="bt-card-mid">
+          <div class="bt-metric-val">${escapeHtml(item.val)}</div>
+          <div class="bt-meter-track">
+            <div class="bt-meter-fill ${item.tagClass}" style="width: ${item.pctNum.toFixed(1)}%;"></div>
+            <div class="bt-meter-benchmark" style="left: 50%;" title="50% Baseline"></div>
+          </div>
+        </div>
+        <div class="bt-card-foot">
+          <span class="bt-foot-desc">${escapeHtml(item.desc)}</span>
+          <span class="bt-foot-val">${item.pctNum.toFixed(1)}%</span>
+        </div>
+      `;
+      pGrid.appendChild(card);
+    });
+  }
+
+  // 2. Advanced 8-Metric Structured Grid
+  const ADVANCED = [
+    {
+      label: 'ROC-AUC Score',
+      sub: 'Binary Discrimination',
+      val: num(bt.roc_auc, 3),
+      info: 'roc_auc',
+      tag: bt.roc_auc >= 0.55 ? 'Discriminative' : (bt.roc_auc >= 0.50 ? 'Baseline' : 'Weak'),
+      tagClass: bt.roc_auc >= 0.55 ? 'pos' : 'neutral',
+    },
+    {
+      label: 'Brier Calibration',
+      sub: 'Mean Squared Error',
+      val: num(bt.brier_score, 4),
+      info: 'brier_score',
+      tag: bt.brier_score <= 0.25 ? 'Well-Calibrated' : 'Uncalibrated',
+      tagClass: bt.brier_score <= 0.25 ? 'pos' : 'neg',
+    },
+    {
+      label: 'Avg Forward Return',
+      sub: `Mean T+${horizonDays}d Horizon`,
+      val: bt.avg_fwd_return_pct != null ? `${bt.avg_fwd_return_pct > 0 ? '+' : ''}${bt.avg_fwd_return_pct.toFixed(2)}%` : 'N/A',
+      info: 't20_horizon',
+      tag: (bt.avg_fwd_return_pct || 0) >= 0 ? 'Positive Drift' : 'Negative Drift',
+      tagClass: (bt.avg_fwd_return_pct || 0) >= 0 ? 'pos' : 'neg',
+    },
+    {
+      label: 'Median Fwd Return',
+      sub: `Robust 50th Percentile`,
+      val: bt.med_fwd_return_pct != null ? `${bt.med_fwd_return_pct > 0 ? '+' : ''}${bt.med_fwd_return_pct.toFixed(2)}%` : 'N/A',
+      info: 't20_horizon',
+      tag: '50th %ile',
+      tagClass: 'neutral',
+    },
+    {
+      label: 'OOF Sample Size',
+      sub: 'Walk-Forward Evaluations',
+      val: `${bt.oof_samples ?? 'N/A'} Bars`,
+      info: 'oof_samples',
+      tag: 'Historical Bars',
+      tagClass: 'low',
+    },
+    {
+      label: 'Positive Class (Up)',
+      sub: 'Bullish Out-of-Fold Bars',
+      val: `${bt.oof_positive_samples ?? 'N/A'} (${bt.oof_samples ? Math.round((bt.oof_positive_samples / bt.oof_samples) * 100) : 0}%)`,
+      info: 'oof_samples',
+      tag: 'Class Balance',
+      tagClass: 'neutral',
+    },
+    {
+      label: 'Purge & Embargo Window',
+      sub: 'Anti-Leakage Buffer',
+      val: `${purgeDays} Trading Sessions`,
+      info: 'purge_embargo',
+      tag: 'Zero Leakage',
+      tagClass: 'frictionless',
+    },
+    {
+      label: 'Ensemble Stacking',
+      sub: 'Architecture Stack',
+      val: bt.lstm_used_in_stacking ? 'XGBoost + PyTorch LSTM' : 'XGBoost Primary',
+      info: 'lstm_coefficient',
+      tag: bt.lstm_used_in_stacking ? 'Dual Ensemble' : 'XGB Core',
+      tagClass: 'low',
+    },
+  ];
+
+  const aGrid = document.getElementById('bt-advanced-grid');
+  if (aGrid) {
+    aGrid.innerHTML = '';
+    ADVANCED.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'bt-adv-card glass';
+      card.innerHTML = `
+        <div class="bt-adv-top">
+          <div class="bt-adv-label-wrap">
+            <span class="bt-adv-label">${escapeHtml(item.label)}</span>
+            <span class="bt-adv-sub">${escapeHtml(item.sub)}</span>
+          </div>
+          <div class="bt-adv-right">
+            ${item.info ? `<button class="info-btn" data-info="${item.info}" aria-label="What is ${item.label}?">ⓘ</button>` : ''}
+            <span class="sc-tag ${item.tagClass}">${escapeHtml(item.tag)}</span>
+          </div>
+        </div>
+        <div class="bt-adv-val">${escapeHtml(item.val)}</div>
+      `;
+      aGrid.appendChild(card);
+    });
+  }
+
+  const btContainer = document.getElementById('backtest-card');
+  if (btContainer && window.QV_initInfoIcons) {
+    window.QV_initInfoIcons(btContainer);
+  }
 }
 
 function renderDisclaimer(data) {
