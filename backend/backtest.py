@@ -242,6 +242,46 @@ def simulate_strategy(
     return metrics, equity_series, trade_returns
 
 
+def generate_hysteresis_signals(
+    probabilities: np.ndarray,
+    prices: pd.Series,
+    sma200: Optional[pd.Series] = None,
+    base_buy_thresh: float = 0.50,
+    base_sell_thresh: float = 0.44,
+    bear_buy_thresh: float = 0.54,
+    bear_sell_thresh: float = 0.48,
+) -> pd.Series:
+    """
+    Generate trade execution signals using an institutional Hysteresis Band & Trend-Aware Filter.
+    Eliminates noise churn around 0.50 and preserves secular bull runs.
+    """
+    n = len(probabilities)
+    signals_arr = np.zeros(n, dtype=int)
+    current_pos = 0
+
+    has_sma = sma200 is not None and len(sma200) == n
+
+    for i in range(n):
+        p = float(probabilities[i])
+        px = float(prices.iloc[i])
+
+        above_trend = True
+        if has_sma and pd.notna(sma200.iloc[i]):
+            above_trend = px >= float(sma200.iloc[i])
+
+        buy_thresh = base_buy_thresh if above_trend else bear_buy_thresh
+        sell_thresh = base_sell_thresh if above_trend else bear_sell_thresh
+
+        if current_pos == 0 and p >= buy_thresh:
+            current_pos = 1
+        elif current_pos == 1 and p < sell_thresh:
+            current_pos = 0
+
+        signals_arr[i] = current_pos
+
+    return pd.Series(signals_arr, index=prices.index)
+
+
 # ---------------------------------------------------------------------------
 # Benchmark Suite Comparison
 # ---------------------------------------------------------------------------
@@ -272,15 +312,15 @@ def run_benchmark_comparison(
 
     dates = [d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d) for d in df.index]
 
-    # ── 1. QuantView Strategy (Authentic OOF Predictions) ────────────────────
+    # ── 1. QuantView Strategy (Authentic OOF Predictions with Hysteresis) ────
     if qv_probabilities is None or len(qv_probabilities) != n:
         raise ValueError(
             f"QuantView out-of-fold predictions are required for benchmark comparison "
             f"(expected {n} probabilities, got {len(qv_probabilities) if qv_probabilities is not None else 'None'})."
         )
 
-    # Signal formed at bar t: Long when P >= 0.50, Cash when P < 0.50
-    qv_signals = pd.Series((qv_probabilities >= 0.50).astype(int), index=df.index)
+    sma200_series = df["sma200"] if "sma200" in df.columns else prices.rolling(cfg.SMA_SLOW_PERIOD, min_periods=50).mean()
+    qv_signals = generate_hysteresis_signals(qv_probabilities, prices, sma200_series)
 
     qv_metrics, qv_equity, _ = simulate_strategy(
         prices=prices,
