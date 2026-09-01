@@ -1476,15 +1476,60 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
       data.cost_scenarios.forEach(sc => {
         const card = document.createElement('div');
         card.className = 'cost-scenario-card glass';
-        const retSign = sc.total_return > 0 ? '+' : '';
-        const retColor = sc.total_return > 0 ? 'var(--green)' : 'var(--red)';
-        const costTitle = sc.cost_label || sc.scenario || 'Scenario';
+        const isPos = sc.total_return > 0;
+        const retSign = isPos ? '+' : '';
+        const retColorClass = isPos ? 'pos' : 'neg';
+        
+        const costVal = sc.cost_pct != null ? sc.cost_pct * 100 : parseFloat(String(sc.cost_label || '0').replace('%', ''));
+        let tierLabel = 'Custom Tier';
+        let tierTag = 'Standard';
+        let tagClass = 'baseline';
+        if (costVal === 0) {
+          tierLabel = 'Zero Fee';
+          tierTag = 'Frictionless';
+          tagClass = 'frictionless';
+        } else if (costVal <= 0.05) {
+          tierLabel = 'Institutional';
+          tierTag = 'Low Cost';
+          tagClass = 'low';
+        } else if (costVal <= 0.10) {
+          tierLabel = 'Standard';
+          tierTag = 'Baseline';
+          tagClass = 'baseline';
+        } else {
+          tierLabel = 'High Impact';
+          tierTag = 'Stressed';
+          tagClass = 'stressed';
+        }
+
+        const costLabel = sc.cost_label || `${costVal.toFixed(2)}%`;
+
         card.innerHTML = `
-          <div class="sc-title">${costTitle}</div>
-          <div class="sc-ret" style="color: ${retColor};">${retSign}${num(sc.total_return, 2)}%</div>
-          <div class="sc-metrics">
-            <span>Sharpe: <strong>${num(sc.sharpe, 2)}</strong></span>
-            <span>Max DD: <strong>${num(sc.max_drawdown, 2)}%</strong></span>
+          <div class="sc-header">
+            <div class="sc-tier-badge">
+              <span class="sc-fee-val">${escapeHtml(costLabel)} Fee</span>
+              <span class="sc-tier-sub">${escapeHtml(tierLabel)}</span>
+            </div>
+            <span class="sc-tag ${tagClass}">${escapeHtml(tierTag)}</span>
+          </div>
+
+          <div class="sc-body">
+            <div class="sc-ret-label">Net Strategy Return</div>
+            <div class="sc-ret-val ${retColorClass}">
+              <span class="sc-ret-arrow">${isPos ? '▲' : '▼'}</span>
+              <span>${retSign}${num(sc.total_return, 2)}%</span>
+            </div>
+          </div>
+
+          <div class="sc-metrics-grid">
+            <div class="sc-metric-box">
+              <span class="sc-metric-lbl">Sharpe Ratio</span>
+              <strong class="sc-metric-num ${sc.sharpe >= 1 ? 'pos' : (sc.sharpe < 0 ? 'neg' : '')}">${num(sc.sharpe, 2)}</strong>
+            </div>
+            <div class="sc-metric-box">
+              <span class="sc-metric-lbl">Max Drawdown</span>
+              <strong class="sc-metric-num neg">${num(sc.max_drawdown, 2)}%</strong>
+            </div>
           </div>
         `;
         scenariosGrid.appendChild(card);
