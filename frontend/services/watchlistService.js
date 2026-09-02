@@ -7,7 +7,7 @@
 (function(window) {
   'use strict';
 
-  var MOVERS_CACHE_KEY = 'QV_CACHED_WATCHLIST';
+  var MOVERS_CACHE_KEY = 'QV_CACHED_WATCHLIST_V3';
   var USER_WATCHLIST_KEY = 'QV_USER_WATCHLIST_V1';
 
   window.WatchlistService = {
