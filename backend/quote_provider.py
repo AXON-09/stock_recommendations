@@ -79,13 +79,11 @@ class YahooQuoteProvider(BaseQuoteProvider):
 
     def fetch_quote(self, ticker: str) -> Optional[LiveQuoteModel]:
         try:
-            import json
-            import urllib.request
             import yfinance as yf
             try:
-                from backend.engine import _SESSION, fetch_info, fetch_raw_data
+                from backend.engine import _SESSION, fetch_raw_data
             except ImportError:
-                from engine import _SESSION, fetch_info, fetch_raw_data
+                from engine import _SESSION, fetch_raw_data
 
             t_clean = ticker.strip()
             
@@ -97,20 +95,22 @@ class YahooQuoteProvider(BaseQuoteProvider):
             # Tier 1: Direct Yahoo v8 Chart API probe (sub-100ms, highly reliable live real-time market price)
             try:
                 url = f"https://query1.finance.yahoo.com/v8/finance/chart/{t_clean}?interval=1d&range=1d"
-                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-                with urllib.request.urlopen(req, timeout=2.5) as response:
-                    raw_data = json.loads(response.read().decode('utf-8'))
-                    meta_info = raw_data.get('chart', {}).get('result', [{}])[0].get('meta', {})
-                    rmp = meta_info.get('regularMarketPrice')
-                    if rmp and np.isfinite(rmp) and rmp > 0:
-                        price = float(rmp)
-                    cpc = meta_info.get('chartPreviousClose') or meta_info.get('previousClose')
-                    if cpc and np.isfinite(cpc) and cpc > 0:
-                        prev_close = float(cpc)
+                r = _SESSION.get(url, timeout=2.0)
+                if r.status_code == 200:
+                    raw_data = r.json()
+                    res_list = raw_data.get('chart', {}).get('result', [])
+                    if res_list and isinstance(res_list[0], dict):
+                        meta_info = res_list[0].get('meta', {})
+                        rmp = meta_info.get('regularMarketPrice')
+                        if rmp and np.isfinite(rmp) and rmp > 0:
+                            price = float(rmp)
+                        cpc = meta_info.get('chartPreviousClose') or meta_info.get('previousClose')
+                        if cpc and np.isfinite(cpc) and cpc > 0:
+                            prev_close = float(cpc)
             except Exception as e:
                 log.debug("[%s] Direct v8 chart probe fallback: %s", t_clean, e)
 
-            # Tier 2: Fast info probe
+            # Tier 2: Fast info probe (only if price or prev_close missing)
             if price is None or prev_close is None:
                 try:
                     tk = yf.Ticker(t_clean, session=_SESSION)
@@ -125,28 +125,7 @@ class YahooQuoteProvider(BaseQuoteProvider):
                 except Exception as e:
                     log.debug("[%s] fast_info lookup failed: %s", t_clean, e)
 
-            # Tier 3: Info probe fallback
-            info = {}
-            try:
-                info = fetch_info(t_clean)
-            except Exception:
-                pass
-
-            if price is None and info:
-                for fld in ("regularMarketPrice", "currentPrice", "navPrice", "open"):
-                    v = info.get(fld)
-                    if v and np.isfinite(v) and v > 0:
-                        price = float(v)
-                        break
-
-            if prev_close is None and info:
-                for fld in ("regularMarketPreviousClose", "previousClose", "chartPreviousClose"):
-                    v = info.get(fld)
-                    if v and np.isfinite(v) and v > 0:
-                        prev_close = float(v)
-                        break
-
-            # Tier 4: Historical tail fallback
+            # Tier 3: Historical tail fallback (fastest fallback)
             if price is None or prev_close is None:
                 try:
                     df = fetch_raw_data(t_clean, period="5d")
@@ -169,12 +148,13 @@ class YahooQuoteProvider(BaseQuoteProvider):
                 prev_close = price
 
             # 2. Market Metadata and Safe Exchange Status
+            info = meta_info
             mkt = get_market_info(t_clean, info)
             is_index = t_clean.startswith("^") or (t_clean in _KNOWN_INDEX_MAPPINGS) or getattr(mkt, "is_index", False)
             asset_type = "INDEX" if is_index else ("ETF" if mkt.is_etf else "EQUITY")
             
             # Display name normalization
-            display_name = mkt.company_name or info.get("shortName") or info.get("longName") or t_clean
+            display_name = mkt.company_name or info.get("shortName") or info.get("longName") or info.get("symbol") or t_clean
             if is_index and t_clean in _KNOWN_INDEX_MAPPINGS:
                 display_name = _KNOWN_INDEX_MAPPINGS[t_clean].lstrip("^") + " Benchmark Index"
                 if t_clean == "^NSEI": display_name = "NIFTY 50"
@@ -185,14 +165,14 @@ class YahooQuoteProvider(BaseQuoteProvider):
             change = round(price - prev_close, 4)
             change_pct = round((change / prev_close) * 100.0, 4) if prev_close > 0 else 0.0
 
-            # Market State extraction (exchange reported)
+            # Market State extraction
             raw_state = str(info.get("marketState") or info.get("regularMarketState") or "UNKNOWN").upper()
             is_open = raw_state in ("REGULAR", "OPEN")
             
             # Delay and freshness categorization
-            exchange_tz = str(info.get("exchangeTimezoneShortName") or ( "IST" if mkt.is_india else "EST"))
+            exchange_tz = str(info.get("exchangeTimezoneShortName") or ("IST" if mkt.is_india else "EST"))
             iana_tz = str(info.get("exchangeTimezoneName") or ("Asia/Kolkata" if mkt.is_india else "America/New_York"))
-            exchange_name = str(mkt.exchange or info.get("exchange") or "UNKNOWN")
+            exchange_name = str(mkt.exchange or info.get("exchangeName") or info.get("exchange") or "UNKNOWN")
             
             freshness = "LIVE" if is_open else "PREVIOUS_CLOSE"
             delay_status = "REAL_TIME" if is_open else "END_OF_DAY"

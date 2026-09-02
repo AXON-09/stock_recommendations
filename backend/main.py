@@ -1189,7 +1189,6 @@ def fetch_live_watchlist_quotes() -> List[Dict[str, Any]]:
     if _WATCHLIST_CACHE["items"]:
         return _WATCHLIST_CACHE["items"]
     return results or []
-    return results or []
 
 def _score_headline_sentiment(text: str) -> tuple[str, float]:
     """Calculate sentiment label and normalized score from headline keywords."""

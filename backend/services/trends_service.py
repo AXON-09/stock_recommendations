@@ -69,11 +69,11 @@ def get_search_attention(ticker: str) -> Dict[str, Any]:
                 "search_velocity": velocity,
                 "tier": tier,
                 "status": "live",
-                "message": flive_velocity = f{velocity}% vs 30d baseline.f
+                "message": f"Search velocity is {velocity:+.1f}% vs 30-day baseline."
             }
             _TRENDS_CACHE[t_clean] = (now, result)
             return result
-   except Exception as exc:
+    except Exception as exc:
         log.debug("[%s] pytrends fetch failed or rate-limited: %s", t_clean, exc)
 
     # 3. Honest unavailable state (NO fabricated flat or positive values)
