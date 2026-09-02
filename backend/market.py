@@ -396,9 +396,9 @@ def resolve_ticker_with_fallback(user_input: str) -> str:
 
 
 def _has_data(ticker: str) -> bool:
-    """Quick probe: return True if Yahoo Finance has at least 5 rows of data."""
+    """Quick probe: return True if Yahoo Finance has at least 1 row of data."""
     try:
-        df = yf.Ticker(ticker).history(period="5d")
+        df = yf.Ticker(ticker, session=_SESSION).history(period="5d")
         return df is not None and not df.empty and len(df) >= 1
     except Exception:
         return False
@@ -670,10 +670,12 @@ def _india_peer_pe(sector: str) -> Optional[float]:
             "Healthcare": 32.0,
             "Consumer Defensive": 42.0,
             "Consumer Cyclical": 30.0,
+            "Materials": 15.0,
             "Basic Materials": 15.0,
             "Industrials": 25.0,
             "Utilities": 16.0,
             "Communication Services": 22.0,
+            "Real Estate": 24.0,
         }
         val = _SECTOR_DEFAULTS.get(sector)
         _PEER_PE_CACHE[sector] = val

@@ -14,6 +14,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 import pandas as pd
@@ -377,17 +378,34 @@ class CompositeQuoteProvider:
         return fallback_quote
 
     def get_quotes_batch(self, tickers: List[str], max_batch_size: int = 50) -> BatchQuoteResponse:
-        """Batch fetch multiple quotes with deduplication and partial failure resilience."""
+        """Batch fetch multiple quotes concurrently with deduplication and partial failure resilience."""
         unique_tickers = list(dict.fromkeys([t.strip().upper() for t in tickers if t.strip()]))[:max_batch_size]
         quotes_map: Dict[str, LiveQuoteModel] = {}
         errors_map: Dict[str, str] = {}
 
-        for sym in unique_tickers:
+        if not unique_tickers:
+            return BatchQuoteResponse(
+                quotes={},
+                errors={},
+                total_requested=0,
+                total_successful=0,
+            )
+
+        def _fetch_single(sym: str) -> Tuple[str, Optional[LiveQuoteModel], Optional[str]]:
             try:
-                q = self.get_quote(sym)
-                quotes_map[sym] = q
+                return sym, self.get_quote(sym), None
             except Exception as e:
-                errors_map[sym] = str(e)
+                return sym, None, str(e)
+
+        max_workers = min(10, max(1, len(unique_tickers)))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(_fetch_single, sym) for sym in unique_tickers]
+            for future in as_completed(futures):
+                sym, q, err = future.result()
+                if q is not None:
+                    quotes_map[sym] = q
+                if err:
+                    errors_map[sym] = err
 
         return BatchQuoteResponse(
             quotes=quotes_map,
