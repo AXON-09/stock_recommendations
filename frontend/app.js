@@ -1602,6 +1602,7 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
         const badgeClass = s.name === 'QuantView' ? 'strat-badge-qv' : s.name === 'Buy & Hold' ? 'strat-badge-bh' : 'strat-badge-sma';
         const retColor = s.total_return > 0 ? 'var(--green)' : s.total_return < 0 ? 'var(--red)' : 'var(--text-1)';
         const sign = s.total_return > 0 ? '+' : '';
+        const cagrSign = s.cagr > 0 ? '+' : '';
         const tradeCount = s.trades != null ? s.trades : (s.trade_count != null ? s.trade_count : '—');
         const volStr = s.volatility != null ? `${num(s.volatility, 1)}%` : '—';
         const winRateStr = s.win_rate != null ? `${num(s.win_rate, 1)}%` : (s.name === 'Buy & Hold' ? (s.total_return > 0 ? '100.0%' : '0.0%') : '—');
