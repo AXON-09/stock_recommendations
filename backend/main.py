@@ -43,6 +43,8 @@ from engine import (
     fetch_ticker_news,
     fetch_press_releases,
     fetch_info,
+    fetch_raw_data,
+    compute_indicators,
     AssetFeatures,
     FEATURE_COLS,
     REGIME_CODE,
@@ -130,10 +132,11 @@ def _check_rate_limit(client_ip: str) -> bool:
 # In-memory LRU Cache with Thread-Safe Eviction Cap {resolved_ticker → CacheEntry}
 # ---------------------------------------------------------------------------
 class CacheEntry:
-    def __init__(self, model: StockRecommender, X: pd.DataFrame, df: pd.DataFrame, info: Optional[dict] = None, X_full: Optional[pd.DataFrame] = None, schema_version: Optional[str] = None):
+    def __init__(self, model: StockRecommender, X: pd.DataFrame, df: pd.DataFrame, info: Optional[dict] = None, X_full: Optional[pd.DataFrame] = None, schema_version: Optional[str] = None, df_chart: Optional[pd.DataFrame] = None):
         self.model          = model
         self.X              = X       # feature matrix (training set)
         self.df             = df      # full DataFrame
+        self.df_chart       = df_chart if df_chart is not None else df  # multi-decade chart history
         self.X_full         = X_full if X_full is not None else getattr(df, "attrs", {}).get("X_full", X)  # un-truncated feature matrix up to bar T
         self.info           = info or {}
         self.schema_version = schema_version or getattr(cfg, "MODEL_SCHEMA_VERSION", "v3.1.0")
@@ -657,6 +660,15 @@ def get_recommendation(
                 rec = StockRecommender()
                 rec.fit(X, y)
 
+                # Fetch full lifetime OHLCV history for chart (fast ~300ms)
+                df_chart = df
+                try:
+                    raw_max = fetch_raw_data(resolved, period="max")
+                    if raw_max is not None and len(raw_max) > len(df):
+                        df_chart = compute_indicators(raw_max)
+                except Exception as exc:
+                    log.debug("[%s] Full chart history fetch fallback to training df: %s", resolved, exc)
+
                 # Forward return stats for the training set
                 if "fwd_return" in df.columns:
                     fwd = df["fwd_return"].dropna()
@@ -668,7 +680,7 @@ def get_recommendation(
                     if hasattr(df.index[-1], "strftime")
                     else str(df.index[-1])
                 )
-                _cache[resolved] = CacheEntry(rec, X, df, info=fetch_info(resolved))
+                _cache[resolved] = CacheEntry(rec, X, df, info=fetch_info(resolved), df_chart=df_chart)
                 log.info("[%s] Training complete in %.1fs", resolved, time.perf_counter() - t0)
             except (ValueError, RuntimeError) as exc:
                 _METRICS["training_failures"] += 1
@@ -690,10 +702,19 @@ def get_recommendation(
         log.exception("[%s] Prediction failed", resolved)
         raise HTTPException(status_code=500, detail=f"Prediction error: {exc}")
 
-    # Build historical price points for interactive Groww-style charting (full lifetime series)
+    # Build historical price points for interactive Groww-style charting (full multi-decade lifetime series)
     price_history: List[PriceHistoryPoint] = []
-    if "Close" in entry.df.columns:
-        df_chart = entry.df
+    df_chart = getattr(entry, "df_chart", None)
+    if df_chart is None or len(df_chart) <= len(entry.df):
+        try:
+            raw_max = fetch_raw_data(resolved, period="max")
+            if raw_max is not None and len(raw_max) > len(entry.df):
+                df_chart = compute_indicators(raw_max)
+                entry.df_chart = df_chart
+        except Exception:
+            df_chart = entry.df
+
+    if df_chart is not None and "Close" in df_chart.columns:
         for idx, row in df_chart.iterrows():
             d_str = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
             price_history.append(

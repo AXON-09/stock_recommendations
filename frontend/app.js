@@ -2080,23 +2080,27 @@ function renderEquityChart(points, sym = '$') {
     if (p.sma50_200 != null) allVals.push(p.sma50_200);
   });
 
-  if (allVals.length === 0) return;
+  const validVals = allVals.filter(v => v != null && isFinite(v));
+  if (validVals.length === 0) return;
 
-  let minV = Math.min(...allVals);
-  let maxV = Math.max(...allVals);
+  let minV = Math.min(...validVals);
+  let maxV = Math.max(...validVals);
   const diffV = maxV - minV;
   minV = minV - (diffV * 0.05 || minV * 0.02);
   maxV = maxV + (diffV * 0.05 || maxV * 0.02);
   const rangeV = Math.max(1, maxV - minV);
 
   const n = _equityPoints.length;
-  const getX = i => padLeft + (i / (n - 1)) * (w - padLeft - padRight);
-  const getY = v => padTop + (1 - (v - minV) / rangeV) * (h - padTop - padBottom);
+  const getX = i => padLeft + (i / Math.max(1, n - 1)) * (w - padLeft - padRight);
+  const getY = v => {
+    const numV = (v != null && isFinite(v)) ? Number(v) : minV;
+    return padTop + (1 - (numV - minV) / rangeV) * (h - padTop - padBottom);
+  };
 
   _equityScales = { w, h, padTop, padBottom, padLeft, padRight, minV, maxV, rangeV, getX, getY };
 
-  const bhCoords  = _equityPoints.map((p, i) => `${getX(i).toFixed(1)},${getY(p.buy_hold).toFixed(1)}`);
-  const smaCoords = _equityPoints.map((p, i) => `${getX(i).toFixed(1)},${getY(p.sma50_200).toFixed(1)}`);
+  const bhCoords  = _equityPoints.map((p, i) => `${getX(i).toFixed(1)},${getY(p.buy_hold ?? p.buy_and_hold ?? p.quantview).toFixed(1)}`);
+  const smaCoords = _equityPoints.map((p, i) => `${getX(i).toFixed(1)},${getY(p.sma50_200 ?? p.sma_50_200 ?? p.quantview).toFixed(1)}`);
   const qvCoords  = _equityPoints.map((p, i) => `${getX(i).toFixed(1)},${getY(p.quantview).toFixed(1)}`);
 
   if (pathBh)  pathBh.setAttribute('d', `M ${bhCoords.join(' L ')}`);
