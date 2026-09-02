@@ -1602,9 +1602,10 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
         const badgeClass = s.name === 'QuantView' ? 'strat-badge-qv' : s.name === 'Buy & Hold' ? 'strat-badge-bh' : 'strat-badge-sma';
         const retColor = s.total_return > 0 ? 'var(--green)' : s.total_return < 0 ? 'var(--red)' : 'var(--text-1)';
         const sign = s.total_return > 0 ? '+' : '';
-        const cagrSign = s.cagr > 0 ? '+' : '';
         const tradeCount = s.trades != null ? s.trades : (s.trade_count != null ? s.trade_count : '—');
-        const eqValue = s.final_equity != null ? currency(s.final_equity, sym) : '—';
+        const volStr = s.volatility != null ? `${num(s.volatility, 1)}%` : '—';
+        const winRateStr = s.win_rate != null ? `${num(s.win_rate, 1)}%` : (s.name === 'Buy & Hold' ? (s.total_return > 0 ? '100.0%' : '0.0%') : '—');
+        const isWinHigh = s.win_rate != null && s.win_rate >= 50;
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="strat-name-cell"><span class="${badgeClass}"></span> ${s.name}</td>
@@ -1612,9 +1613,9 @@ async function fetchAndRenderBenchmark(ticker, curSym = '$') {
           <td style="color: ${retColor}; font-weight:600;">${cagrSign}${num(s.cagr, 2)}%</td>
           <td>${num(s.sharpe, 2)}</td>
           <td style="color: var(--red);">${num(s.max_drawdown, 2)}%</td>
-          <td>${num(s.win_rate, 1)}%</td>
-          <td>${tradeCount}</td>
-          <td style="color: var(--text-2); font-family:var(--font-mono);">${eqValue}</td>
+          <td style="color: var(--text-2); font-family:var(--font-mono);">${volStr}</td>
+          <td style="font-weight:600;">${tradeCount}</td>
+          <td style="font-weight:700; color: ${isWinHigh ? 'var(--green)' : 'var(--text-1)'}; font-family:var(--font-mono);">${winRateStr}</td>
         `;
         tableBody.appendChild(tr);
       });
@@ -3447,25 +3448,36 @@ async function updateMarketStatusPills() {
     }
   }
 
-  // 1. Instant hydration only from fresh cached state (<= 60s)
+  // 1. Instant client-side clock baseline (zero latency, zero flicker)
   try {
-    const raw = localStorage.getItem('QV_MARKET_STATE');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.timestamp && (Date.now() / 1000 - parsed.timestamp < 60)) {
-        applyStatus(parsed);
-      }
-    }
+    const nowUtc = new Date();
+    // India IST is UTC + 5.5 hours
+    const istMs = nowUtc.getTime() + (5.5 * 3600 * 1000);
+    const istDate = new Date(istMs);
+    const istDay = istDate.getUTCDay(); // 0 = Sun, 6 = Sat
+    const istMin = istDate.getUTCHours() * 60 + istDate.getUTCMinutes();
+    const isNseOpen = (istDay >= 1 && istDay <= 5) && (istMin >= 555 && istMin <= 930);
+
+    // US EDT is UTC - 4 hours
+    const usMs = nowUtc.getTime() - (4.0 * 3600 * 1000);
+    const usDate = new Date(usMs);
+    const usDay = usDate.getUTCDay();
+    const usMin = usDate.getUTCHours() * 60 + usDate.getUTCMinutes();
+    const isUsOpen = (usDay >= 1 && usDay <= 5) && (usMin >= 570 && usMin <= 960);
+
+    applyStatus({
+      nse: { is_open: isNseOpen, status: isNseOpen ? 'Open' : 'Closed' },
+      us: { is_open: isUsOpen, status: isUsOpen ? 'Open' : 'Closed' }
+    });
   } catch (e) {}
 
-  // 2. Fetch fresh live state from backend
+  // 2. Fetch authoritative live server state from backend
   try {
     const base = (window.location.protocol === 'file:' ? 'http://127.0.0.1:8000' : '');
     const resp = await fetch(base + '/api/market-status');
     if (!resp.ok) return;
     const data = await resp.json();
     applyStatus(data);
-    localStorage.setItem('QV_MARKET_STATE', JSON.stringify(data));
   } catch (err) {
     console.debug('[MarketStatus] Status fetch skipped:', err);
   }

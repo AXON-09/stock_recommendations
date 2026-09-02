@@ -130,8 +130,8 @@ CONF_ATR_HIGH: float = 0.100   # ATR/price => penalty = 1 (minimum confidence)
 HISTORY_PERIOD_FEATURES: str = "2y"
 """yfinance period used to extract the current feature snapshot."""
 
-HISTORY_PERIOD_TRAINING: str = "max"
-"""yfinance period used to build the ML training matrix and full price history."""
+HISTORY_PERIOD_TRAINING: str = "5y"
+"""yfinance period used to build the ML training matrix (~1,250 bars, fast sub-second training)."""
 
 MIN_TRAINING_ROWS: int = 300
 """Minimum number of rows (after indicator warm-up) needed to train."""

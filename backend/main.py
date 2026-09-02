@@ -1359,16 +1359,72 @@ def get_live_market_status() -> Dict[str, Any]:
 
     td_key = os.environ.get("TWELVE_DATA_API_KEY") or os.environ.get("TWELVEDATA_KEY") or os.environ.get("TWELVEDATA_API_KEY") or ""
     
-    nse_info = {"name": "NSE / BSE (India)", "code": "XNSE", "is_open": False, "status": "Closed", "market_state": "CLOSED"}
-    us_info = {"name": "US (NYSE / NASDAQ)", "code": "XNYS", "is_open": False, "status": "Closed", "market_state": "CLOSED"}
+    # 1. Authoritative Real-Time Exchange Clock Baseline (Instant & Zero-Latency)
+    nse_open = False
+    us_open = False
+    nse_status = "Closed"
+    us_status = "Closed"
+    nse_state = "CLOSED"
+    us_state = "CLOSED"
 
-    # 1. Check Twelve Data API if API key configured
+    try:
+        from zoneinfo import ZoneInfo
+        # India (NSE / BSE) in Asia/Kolkata
+        ist_now = datetime.now(ZoneInfo("Asia/Kolkata"))
+        ist_min = ist_now.hour * 60 + ist_now.minute
+        # Mon-Fri: 9:15 AM (555 min) to 3:30 PM (930 min)
+        if ist_now.weekday() < 5:
+            if 555 <= ist_min <= 930:
+                nse_open = True
+                nse_status = "Open"
+                nse_state = "REGULAR"
+            elif 540 <= ist_min < 555:
+                nse_status = "Pre-Market"
+                nse_state = "PRE"
+            elif 930 < ist_min <= 960:
+                nse_status = "Post-Market"
+                nse_state = "POST"
+
+        # US (NYSE / NASDAQ) in America/New_York
+        us_now = datetime.now(ZoneInfo("America/New_York"))
+        us_min = us_now.hour * 60 + us_now.minute
+        # Mon-Fri: 9:30 AM (570 min) to 4:00 PM (960 min)
+        if us_now.weekday() < 5:
+            if 570 <= us_min <= 960:
+                us_open = True
+                us_status = "Open"
+                us_state = "REGULAR"
+            elif 240 <= us_min < 570:
+                us_status = "Pre-Market"
+                us_state = "PRE"
+            elif 960 < us_min <= 1200:
+                us_status = "After-Hours"
+                us_state = "POST"
+    except Exception as exc:
+        log.warning("Timezone calculation fallback error: %s", exc)
+
+    nse_info = {
+        "name": "NSE / BSE (India)",
+        "code": "XNSE",
+        "is_open": nse_open,
+        "status": nse_status,
+        "market_state": nse_state
+    }
+    us_info = {
+        "name": "US (NYSE / NASDAQ)",
+        "code": "XNYS",
+        "is_open": us_open,
+        "status": us_status,
+        "market_state": us_state
+    }
+
+    # 2. Check Twelve Data API if API key configured for official holiday flags
     if td_key:
         try:
             resp = requests.get(
                 "https://api.twelvedata.com/market_state",
                 params={"apikey": td_key},
-                timeout=3.5
+                timeout=2.0
             )
             if resp.status_code == 200:
                 states = resp.json()
@@ -1376,15 +1432,17 @@ def get_live_market_status() -> Dict[str, Any]:
                     for st in states:
                         code = st.get("code")
                         if code in ("XNSE", "XBOM"):
-                            nse_info["is_open"] = bool(st.get("is_market_open"))
-                            nse_info["status"] = "Open" if nse_info["is_open"] else "Closed"
-                            nse_info["market_state"] = "REGULAR" if nse_info["is_open"] else "CLOSED"
+                            td_open = bool(st.get("is_market_open"))
+                            nse_info["is_open"] = td_open
+                            nse_info["status"] = "Open" if td_open else "Closed"
+                            nse_info["market_state"] = "REGULAR" if td_open else "CLOSED"
                             nse_info["time_to_open"] = st.get("time_to_open")
                             nse_info["time_to_close"] = st.get("time_to_close")
                         elif code in ("XNYS", "XNAS"):
-                            us_info["is_open"] = bool(st.get("is_market_open"))
-                            us_info["status"] = "Open" if us_info["is_open"] else "Closed"
-                            us_info["market_state"] = "REGULAR" if us_info["is_open"] else "CLOSED"
+                            td_open = bool(st.get("is_market_open"))
+                            us_info["is_open"] = td_open
+                            us_info["status"] = "Open" if td_open else "Closed"
+                            us_info["market_state"] = "REGULAR" if td_open else "CLOSED"
                             us_info["time_to_open"] = st.get("time_to_open")
                             us_info["time_to_close"] = st.get("time_to_close")
                     
@@ -1392,76 +1450,7 @@ def get_live_market_status() -> Dict[str, Any]:
                     _MARKET_STATUS_CACHE = {"timestamp": now, "data": res_data}
                     return res_data
         except Exception as e:
-            log.debug("Twelve Data market_state query error: %s", e)
-
-    # 2. Live Exchange Quote Market State Probe (Direct Exchange API Status including Holidays)
-    resolved_via_api = False
-    try:
-        batch_quotes = quote_provider.get_quotes_batch(["^NSEI", "SPY"])
-        nse_q = batch_quotes.quotes.get("^NSEI")
-        us_q = batch_quotes.quotes.get("SPY")
-
-        if nse_q:
-            nse_info["is_open"] = nse_q.is_market_open
-            nse_info["market_state"] = nse_q.market_state
-            if nse_q.is_market_open:
-                nse_info["status"] = "Open"
-            elif nse_q.market_state in ("CLOSED", "HOLIDAY"):
-                nse_info["status"] = "Closed (Holiday / Non-trading)"
-            elif nse_q.market_state == "PRE":
-                nse_info["status"] = "Pre-Market"
-            elif nse_q.market_state in ("POST", "POSTPOST"):
-                nse_info["status"] = "After-Hours"
-            else:
-                nse_info["status"] = "Closed"
-            resolved_via_api = True
-
-        if us_q:
-            us_info["is_open"] = us_q.is_market_open
-            us_info["market_state"] = us_q.market_state
-            if us_q.is_market_open:
-                us_info["status"] = "Open"
-            elif us_q.market_state in ("CLOSED", "HOLIDAY"):
-                us_info["status"] = "Closed (Holiday / Non-trading)"
-            elif us_q.market_state == "PRE":
-                us_info["status"] = "Pre-Market"
-            elif us_q.market_state in ("POST", "POSTPOST"):
-                us_info["status"] = "After-Hours"
-            else:
-                us_info["status"] = "Closed"
-            resolved_via_api = True
-
-        if resolved_via_api:
-            res_data = {
-                "status": "ok",
-                "timestamp": int(now),
-                "source": "Exchange Real-Time Data API",
-                "nse": nse_info,
-                "us": us_info
-            }
-            _MARKET_STATUS_CACHE = {"timestamp": now, "data": res_data}
-            return res_data
-    except Exception as exc:
-        log.debug("Direct exchange market state probe failed: %s", exc)
-
-    # 3. Fallback to precise exchange clock logic (accounts for UTC offsets)
-    try:
-        from zoneinfo import ZoneInfo
-        ist_now = datetime.now(ZoneInfo("Asia/Kolkata"))
-        ist_min = ist_now.hour * 60 + ist_now.minute
-        # Mon-Fri: 9:15 AM (555 min) to 3:30 PM (930 min)
-        nse_open = (ist_now.weekday() < 5) and (555 <= ist_min <= 930)
-        nse_info["is_open"] = nse_open
-        nse_info["status"] = "Open" if nse_open else "Closed"
-
-        us_now = datetime.now(ZoneInfo("America/New_York"))
-        us_min = us_now.hour * 60 + us_now.minute
-        # Mon-Fri: 9:30 AM (570 min) to 4:00 PM (960 min)
-        us_open = (us_now.weekday() < 5) and (570 <= us_min <= 960)
-        us_info["is_open"] = us_open
-        us_info["status"] = "Open" if us_open else "Closed"
-    except Exception as e:
-        log.warning("Timezone fallback error: %s", e)
+            log.debug("Twelve Data market_state query skipped: %s", e)
 
     res_data = {
         "status": "ok",
