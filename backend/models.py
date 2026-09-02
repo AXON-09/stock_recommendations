@@ -858,9 +858,20 @@ class StockRecommender:
             else:
                 s_arr = vals
 
-            base_val = float(shap_obj.base_values[0]) if hasattr(shap_obj, "base_values") else 0.5
-            if isinstance(base_val, (np.ndarray, list)):
-                base_val = float(base_val[-1])
+            raw_base = getattr(shap_obj, "base_values", 0.5)
+            if isinstance(raw_base, (np.ndarray, list)):
+                if len(raw_base) > 0:
+                    first_el = raw_base[0]
+                    if isinstance(first_el, (np.ndarray, list)) and len(first_el) > 1:
+                        base_val = float(first_el[1])  # positive class
+                    elif isinstance(first_el, (np.ndarray, list)) and len(first_el) > 0:
+                        base_val = float(first_el[-1])
+                    else:
+                        base_val = float(first_el)
+                else:
+                    base_val = 0.5
+            else:
+                base_val = float(raw_base) if raw_base is not None else 0.5
 
             # Convert log-odds margin base value to probability space [0, 1]
             if base_val < 0.0 or base_val > 1.0:

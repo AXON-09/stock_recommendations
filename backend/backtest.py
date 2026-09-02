@@ -216,7 +216,7 @@ def simulate_strategy(
         win_rate = None
     else:
         all_eval_trades = list(trade_returns)
-        if len(all_eval_trades) == 0 and current_pos == 1 and entry_price > 0:
+        if current_pos == 1 and entry_price > 0:
             open_trade_ret = (float(prices.iloc[-1]) - entry_price) / entry_price
             all_eval_trades.append(open_trade_ret)
 

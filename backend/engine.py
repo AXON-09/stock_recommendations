@@ -446,9 +446,9 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     plus_di  = 100 * plus_dm.ewm(span=14, adjust=False).mean()  / atr14
     minus_di = 100 * minus_dm.ewm(span=14, adjust=False).mean() / atr14
     dx = (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan) * 100
-    df["adx"]     = dx.ewm(span=14, adjust=False).mean()
-    df["adx_pos"] = plus_di
-    df["adx_neg"] = minus_di
+    df["adx"]     = dx.fillna(0.0).ewm(span=14, adjust=False).mean()
+    df["adx_pos"] = plus_di.fillna(0.0)
+    df["adx_neg"] = minus_di.fillna(0.0)
 
     # ── RSI (14-period EWM) ─────────────────────────────────────────────────
     delta = close.diff()
